@@ -76,7 +76,10 @@ export async function generateGeminiJson<T>({
   );
 
   const payload = (await response.json().catch(() => ({}))) as GeminiResponse;
-  if (!response.ok) throw new GeminiResponseError(payload.error?.message || `Gemini request failed (${response.status}).`);
+  if (!response.ok) {
+    console.error("Gemini API error:", response.status, JSON.stringify(payload));
+    throw new GeminiResponseError(payload.error?.message || `Gemini request failed (${response.status}).`);
+  }
   if (payload.promptFeedback?.blockReason) throw new GeminiResponseError("Gemini blocked this request for safety reasons.");
 
   const candidate = payload.candidates?.[0];
@@ -84,8 +87,15 @@ export async function generateGeminiJson<T>({
   if (!text) throw new GeminiResponseError(`Gemini returned no usable response (${candidate?.finishReason || "unknown"}).`);
 
   try {
-    return JSON.parse(text) as T;
+    let cleaned = text;
+    // Strip markdown code fences if present
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    // Fix trailing commas before } or ]
+    cleaned = cleaned.replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(cleaned) as T;
   } catch {
+    console.error("Gemini raw text (first 500 chars):", text.slice(0, 500));
+    console.error("Gemini raw text (last 200 chars):", text.slice(-200));
     throw new GeminiResponseError("Gemini returned malformed structured output.");
   }
 }
