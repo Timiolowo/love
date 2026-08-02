@@ -1,0 +1,40 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+
+const intents = ["Confess", "Apologise", "Say thank you", "Clear the air"];
+
+export default function MessagePage() {
+  const [intent, setIntent] = useState("Apologise");
+  const [message, setMessage] = useState("");
+  const [ready, setReady] = useState(false);
+
+  function suggestWording() {
+    setMessage("I’ve been thinking about what happened, and I’m sorry for the part I played. I wanted to say this without putting you under pressure to respond immediately.");
+  }
+
+  return (
+    <main className="product-page message-page">
+      <nav className="site-nav product-nav"><Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unsaid</span></Link><span className="product-nav-title">Private Message</span><Link className="nav-action" href="/insights">Chat Insights</Link></nav>
+      <section className="product-hero message-product-hero">
+        <div className="product-intro"><Link className="back-link" href="/">← Back home</Link><p className="eyebrow"><span /> Private conversations, gently begun</p><h1>Say what matters.<br /><em>Stay private.</em></h1><p>The recipient chooses whether to open your message. Your identity remains protected until you both agree to reveal it.</p><div className="product-trust"><span>Consent first</span><span>AI safety checks</span><span>₦1,500 secure delivery</span></div></div>
+        <div className="message-invite-preview"><div className="invite-seal">♡</div><span>Private invitation</span><h3>Someone has sent you a thoughtful anonymous message.</h3><p>You can choose to read it or decline. Your decision stays private.</p><div><button>Open message</button><button>Decline</button></div></div>
+      </section>
+
+      <section className="dedicated-flow message-dedicated-flow">
+        <div className="flow-copy"><span className="step-chip">Step 01 · Compose</span><h2>What would you say if fear was not in the way?</h2><p>Write naturally. Before delivery, AI checks the message for threats, harassment, and exposed personal details—and can help you soften the wording without changing your meaning.</p><div className="recipient-preview"><span>What they receive first</span><p>You have received a private anonymous message. The sender paid to deliver it securely. You can choose to read it or decline.</p><small>Open message →</small></div></div>
+        {!ready ? <div className="form-card large-form">
+          <label>Recipient’s WhatsApp number<div className="phone-field"><span>🇳🇬 +234</span><input inputMode="tel" placeholder="801 234 5678" /></div></label>
+          <fieldset><legend>What do you want to do?</legend><div className="intent-grid">{intents.map((item) => <button key={item} type="button" aria-pressed={intent === item} onClick={() => setIntent(item)}>{item}</button>)}</div></fieldset>
+          <label>Your message<textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Say what has been on your mind…" rows={6} /></label>
+          <button className="ai-button" type="button" onClick={suggestWording}>✦ Help me say this more gently</button>
+          <div className="payment-row"><span><small>Secure delivery</small><strong>₦1,500</strong></span><button className="button button-primary" disabled={!message.trim()} onClick={() => setReady(true)}>Continue to payment</button></div>
+        </div> : <div className="delivery-ready"><div className="ready-seal">✓</div><span className="result-tag">Ready for secure delivery</span><h3>Your message feels thoughtful and safe to send.</h3><p>The recipient will see the invitation first. Your message remains sealed until they accept.</p><blockquote>{message}</blockquote><button className="button button-primary button-full">Pay ₦1,500 and send securely</button><button className="quiet-button" onClick={() => setReady(false)}>Edit message</button></div>}
+      </section>
+
+      <section className="message-steps"><p className="eyebrow"><span /> What happens next</p><div className="message-step-grid"><article><b>01</b><h3>They choose</h3><p>The recipient accepts or declines before seeing your message.</p></article><article><b>02</b><h3>You can talk</h3><p>If they accept, both people can reply inside a protected anonymous room.</p></article><article><b>03</b><h3>You both decide</h3><p>Identity reveal only happens when each person independently agrees.</p></article></div></section>
+      <footer><div><span className="wordmark-seal">U</span><strong>Unsaid</strong></div><Link href="/insights">Want to analyse an existing chat? →</Link><span>Private by design · Lagos, Nigeria</span></footer>
+    </main>
+  );
+}
