@@ -1897,7 +1897,7 @@ legend { margin-bottom: 9px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 25px rgba(246, 155, 192, 0.3);
+  box-shadow: none;
   flex-shrink: 0;
 }
 

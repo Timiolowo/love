@@ -202,7 +202,6 @@ function ProfileContent() {
                     className="text-field"
                     maxLength={60}
                   />
-                  <small>Your first name ({firstName}) is displayed across your profile and wraps.</small>
                 </label>
 
                 <label>
@@ -213,7 +212,6 @@ function ProfileContent() {
                     disabled
                     className="text-field disabled-field"
                   />
-                  <small>Associated Google / Email account.</small>
                 </label>
 
                 {message && <p className="status-msg">{message}</p>}
