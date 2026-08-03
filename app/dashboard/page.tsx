@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { PaymentPlanModal } from "@/components/PaymentPlanModal";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 
 type User = {
   id: string;
@@ -38,15 +39,33 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       try {
         const meRes = await fetch("/api/auth/me");
-        const meData = await meRes.json() as { user?: User };
+        const meData = (await meRes.json()) as { user?: User };
         if (ignore) return;
-        if (meData.user) {
-          setUser(meData.user);
+        let activeUser = meData.user;
+
+        if (!activeUser && typeof window !== "undefined") {
+          const stored = localStorage.getItem("unsaid_user");
+          if (stored) {
+            try {
+              activeUser = JSON.parse(stored) as User;
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+
+        if (activeUser) {
+          setUser(activeUser);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("unsaid_user", JSON.stringify(activeUser));
+          }
           const wrapsRes = await fetch("/api/wraps");
-          const wrapsData = await wrapsRes.json() as { wraps?: Wrap[]; credits?: number };
+          const wrapsData = (await wrapsRes.json()) as { wraps?: Wrap[]; credits?: number };
           if (ignore) return;
           if (wrapsData.wraps) setWraps(wrapsData.wraps);
-          if (typeof wrapsData.credits === "number") setUser((u) => u ? { ...u, credits: wrapsData.credits! } : null);
+          if (typeof wrapsData.credits === "number") {
+            setUser((u) => (u ? { ...u, credits: wrapsData.credits! } : null));
+          }
         }
       } catch (err) {
         console.error("Dashboard load error:", err);
@@ -106,7 +125,7 @@ export default function DashboardPage() {
     return (
       <main className="product-page dashboard-page">
         <nav className="site-nav product-nav">
-          <Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unsaid</span></Link>
+          <Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unfiltered</span></Link>
           <span className="product-nav-title">My Dashboard</span>
         </nav>
         <section className="dashboard-content"><p>Loading your dashboard...</p></section>
@@ -118,7 +137,7 @@ export default function DashboardPage() {
     return (
       <main className="product-page dashboard-page">
         <nav className="site-nav product-nav">
-          <Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unsaid</span></Link>
+          <Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unfiltered</span></Link>
           <span className="product-nav-title">My Dashboard</span>
         </nav>
         <section className="dashboard-content">
@@ -205,6 +224,8 @@ export default function DashboardPage() {
         onUpdateUser={(updated) => setUser(updated)}
         onOpenBuyCredits={() => setIsPlanModalOpen(true)}
       />
+
+      <Footer />
     </main>
   );
 }

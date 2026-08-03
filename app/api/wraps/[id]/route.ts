@@ -110,6 +110,10 @@ export async function POST(
       return NextResponse.json({ error: "Wrap not found." }, { status: 404 });
     }
 
+    if (wrap.userId && wrap.userId !== user.id) {
+      return NextResponse.json({ error: "This wrap is already owned by another account." }, { status: 403 });
+    }
+
     // Attach user_id to wrap
     await db.update(wraps)
       .set({ userId: user.id })

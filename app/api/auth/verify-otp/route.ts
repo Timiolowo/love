@@ -4,18 +4,38 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { createSessionCookie } from "@/lib/auth";
 import { generateShareId } from "@/lib/share";
+import { otpStore } from "../send-otp/route";
 
-// Fallback in-memory store for local dev if D1 binding is initializing
+// Fallback in-memory store for local dev
 const memoryUsers = new Map<string, { id: string; email: string; credits: number; createdAt: number; updatedAt: number }>();
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { email?: string };
+    const body = (await request.json()) as { email?: string; code?: string };
     const email = body.email?.trim().toLowerCase();
+    const code = body.code?.trim();
 
-    if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Please provide a valid email address." }, { status: 400 });
+    if (!email || !code) {
+      return NextResponse.json({ error: "Please enter your email and 6-digit verification code." }, { status: 400 });
     }
+
+    const record = otpStore.get(email);
+
+    if (!record) {
+      return NextResponse.json({ error: "Verification code not found. Please request a new code." }, { status: 400 });
+    }
+
+    if (Date.now() > record.expiresAt) {
+      otpStore.delete(email);
+      return NextResponse.json({ error: "Verification code has expired. Please request a new code." }, { status: 400 });
+    }
+
+    if (record.code !== code) {
+      return NextResponse.json({ error: "Invalid 6-digit verification code. Please check and try again." }, { status: 400 });
+    }
+
+    // Code verified! Delete OTP record to prevent reuse
+    otpStore.delete(email);
 
     let user: { id: string; email: string; credits: number; createdAt: number; updatedAt: number } | null = null;
     let isNewUser = false;
@@ -33,7 +53,7 @@ export async function POST(request: Request) {
           await db.insert(users).values({
             id: newUserId,
             email,
-            credits: 1, // 1 free credit on sign up for free trial!
+            credits: 1, // 1 free credit on sign up!
             createdAt: now,
             updatedAt: now,
           });
@@ -52,7 +72,7 @@ export async function POST(request: Request) {
         memUser = {
           id: `usr_${generateShareId(12)}`,
           email,
-          credits: 1, // 1 free credit on sign up for free trial!
+          credits: 1,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
@@ -61,7 +81,7 @@ export async function POST(request: Request) {
       user = memUser;
     }
 
-    const response = NextResponse.json(
+    return NextResponse.json(
       { success: true, user, isNewUser },
       {
         headers: {
@@ -69,21 +89,8 @@ export async function POST(request: Request) {
         },
       }
     );
-    try {
-      response.cookies.set("unsaid_session", user.id, {
-        path: "/",
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 30 * 24 * 60 * 60,
-      });
-    } catch {
-      /* ignore */
-    }
-    return response;
   } catch (error) {
-    console.error("Login error:", error);
-    const message = error instanceof Error ? error.message : "Failed to sign in. Please try again.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Verify OTP error:", error);
+    return NextResponse.json({ error: "Failed to verify code." }, { status: 500 });
   }
 }

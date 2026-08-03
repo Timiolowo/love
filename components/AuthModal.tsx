@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function AuthModal({
   isOpen,
@@ -9,17 +9,32 @@ export function AuthModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (user: { id: string; email: string; credits: number }) => void;
+  onSuccess?: (user: { id: string; email: string; name?: string | null; credits: number }) => void;
 }) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const errParam = params.get("error");
+      if (errParam) {
+        if (errParam.includes("google")) {
+          setError("Google sign-in could not be completed. Please try signing in with your email address below.");
+        } else {
+          setError(decodeURIComponent(errParam));
+        }
+      }
+    }
+  }, []);
+
   if (!isOpen) return null;
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim() || !email.includes("@")) {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes("@")) {
       setError("Please enter a valid email address.");
       return;
     }
@@ -31,15 +46,22 @@ export function AuthModal({
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: trimmed }),
       });
-      const data = await res.json() as { user?: { id: string; email: string; credits: number }; error?: string };
-      if (!res.ok || !data.user) throw new Error(data.error || "Login failed");
 
-      onSuccess(data.user);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sign in.");
+      const data = (await res.json()) as { success?: boolean; user?: { id: string; email: string; name?: string | null; credits: number }; error?: string };
+
+      if (data.user) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("unsaid_user", JSON.stringify(data.user));
+        }
+        if (onSuccess) onSuccess(data.user);
+        onClose();
+      } else {
+        setError(data.error || "Sign in failed. Please try again.");
+      }
+    } catch {
+      setError("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -50,33 +72,74 @@ export function AuthModal({
       <div className="modal-content auth-modal" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}>×</button>
         <span className="wordmark-seal">U</span>
-        <h2>Sign In or Create Account</h2>
-        <p>Create an account today to claim <strong>1 Free Credit</strong> for a free trial, plus Dashboard storage and 14-day shareable links.</p>
+        <h2>Sign In to Unfiltered</h2>
+        <p>Access your dashboard, claim <strong>1 Free Credit</strong>, and manage sealed private rooms.</p>
 
-        <div className="google-auth-section">
-          <a href="/api/auth/google" className="button button-secondary button-full google-signin-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"/><path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.8s.7 5.1 1.9 7.5l3.7-2.9z"/><path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2l-3.7 2.9C3.7 20.4 7.5 23 12 23z"/></svg>
-            Continue with Google
+        {error && (
+          <div
+            className="form-error"
+            style={{
+              background: "rgba(255, 100, 100, 0.15)",
+              color: "#ff8888",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              fontSize: "13px",
+              marginTop: "14px",
+              textAlign: "center",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div className="google-auth-section" style={{ marginTop: "20px" }}>
+          <a href="/api/auth/google" className="button button-primary button-full google-signin-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24">
+              <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
+              <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z" />
+              <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.8s.7 5.1 1.9 7.5l3.7-2.9z" />
+              <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2l-3.7 2.9C3.7 20.4 7.5 23 12 23z" />
+            </svg>
+            Continue with Google →
           </a>
         </div>
 
-        <div className="auth-divider"><span>or with email</span></div>
+        <div
+          className="auth-divider"
+          style={{
+            margin: "20px 0 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            opacity: 0.5,
+            fontSize: "12px",
+          }}
+        >
+          <span style={{ flex: 1, height: "1px", background: "currentColor" }} />
+          <span>OR SIGN IN WITH EMAIL</span>
+          <span style={{ flex: 1, height: "1px", background: "currentColor" }} />
+        </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          {error && <div className="form-error">{error}</div>}
-          <label>
-            Email Address
+        <form onSubmit={handleEmailSubmit} className="email-auth-form">
+          <label style={{ display: "block", marginBottom: "12px", textAlign: "left", fontSize: "13px" }}>
+            <span style={{ color: "var(--muted, #bbb)", marginBottom: "4px", display: "block" }}>Email Address</span>
             <input
               type="email"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              autoFocus
+              className="text-field"
+              style={{ width: "100%", height: "44px", padding: "0 14px", borderRadius: "8px" }}
             />
           </label>
-          <button type="submit" className="button button-primary button-full" disabled={loading}>
-            {loading ? "Signing in…" : "Continue with Email →"}
+          <button
+            type="submit"
+            className="button button-secondary button-full"
+            disabled={loading}
+            style={{ width: "100%", height: "44px" }}
+          >
+            {loading ? "Signing in..." : "Continue with Email →"}
           </button>
         </form>
       </div>

@@ -288,6 +288,18 @@ function calculateStats(source: string, viewerName: string) {
   let estimatedLaughs = 0;
   const ignoredWords = new Set(["about", "after", "again", "also", "because", "been", "before", "being", "could", "from", "have", "just", "media", "message", "omitted", "that", "their", "them", "then", "there", "these", "they", "this", "very", "what", "when", "where", "which", "with", "would", "your", "you're"]);
 
+  const viewer = viewerName.trim().toLowerCase();
+  let lastSender: string | null = null;
+  let consecutiveCount = 0;
+  let viewerInitiates = 0;
+  let partnerInitiates = 0;
+  let viewerDoubleTexts = 0;
+  let partnerDoubleTexts = 0;
+  let viewerWordCount = 0;
+  let partnerWordCount = 0;
+  let viewerMsgCount = 0;
+  let partnerMsgCount = 0;
+
   for (const line of messageLines) {
     const match = line.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)?\b/i);
     if (match) {
@@ -300,19 +312,47 @@ function calculateStats(source: string, viewerName: string) {
     }
 
     const senderBodyMatch = line.match(/(?:-|–)\s([^:\n]{1,80}):\s*(.*)$/) || line.match(/^\[[^\]]+\]\s*([^:\n]{1,80}):\s*(.*)$/);
-    const sender = senderBodyMatch?.[1]?.trim().toLowerCase();
+    const sender = senderBodyMatch?.[1]?.trim().toLowerCase() || "";
     const body = senderBodyMatch?.[2] || "";
-    if (sender && /\b(?:money|pay|paid|borrow|send|transfer|loan|bill|cash|naira)\b|₦/i.test(body)) {
-      moneyRequests.set(sender, (moneyRequests.get(sender) || 0) + 1);
-    }
-    loveYouCount += (body.match(/\b(?:i\s+love\s+you|love\s+you)\b/gi) || []).length;
-    sorryCount += (body.match(/\b(?:sorry|apolog(?:y|ise|ize))\b/gi) || []).length;
-    estimatedLaughs += (body.match(/(?:😂|🤣|\b(?:lol|lmao|haha+)\b)/gi) || []).length;
-    for (const word of body.toLowerCase().match(/[a-zà-ž']{4,}/gi) || []) {
-      if (!ignoredWords.has(word) && !word.startsWith("http")) words.set(word, (words.get(word) || 0) + 1);
-    }
-    for (const emoji of body.match(/\p{Extended_Pictographic}/gu) || []) {
-      emojis.set(emoji, (emojis.get(emoji) || 0) + 1);
+
+    if (sender) {
+      const isViewer = sender === viewer;
+      const bodyWords = (body.match(/\S+/g) || []).length;
+      if (isViewer) {
+        viewerMsgCount++;
+        viewerWordCount += bodyWords;
+      } else {
+        partnerMsgCount++;
+        partnerWordCount += bodyWords;
+      }
+
+      if (lastSender === sender) {
+        consecutiveCount++;
+        if (consecutiveCount === 2) {
+          if (isViewer) viewerDoubleTexts++;
+          else partnerDoubleTexts++;
+        }
+      } else {
+        if (!lastSender || consecutiveCount >= 2) {
+          if (isViewer) viewerInitiates++;
+          else partnerInitiates++;
+        }
+        lastSender = sender;
+        consecutiveCount = 1;
+      }
+
+      if (/\b(?:money|pay|paid|borrow|send|transfer|loan|bill|cash|naira)\b|₦/i.test(body)) {
+        moneyRequests.set(sender, (moneyRequests.get(sender) || 0) + 1);
+      }
+      loveYouCount += (body.match(/\b(?:i\s+love\s+you|love\s+you)\b/gi) || []).length;
+      sorryCount += (body.match(/\b(?:sorry|apolog(?:y|ise|ize))\b/gi) || []).length;
+      estimatedLaughs += (body.match(/(?:😂|🤣|\b(?:lol|lmao|haha+)\b)/gi) || []).length;
+      for (const word of body.toLowerCase().match(/[a-zà-ž']{4,}/gi) || []) {
+        if (!ignoredWords.has(word) && !word.startsWith("http")) words.set(word, (words.get(word) || 0) + 1);
+      }
+      for (const emoji of body.match(/\p{Extended_Pictographic}/gu) || []) {
+        emojis.set(emoji, (emojis.get(emoji) || 0) + 1);
+      }
     }
   }
 
@@ -323,14 +363,33 @@ function calculateStats(source: string, viewerName: string) {
 
   const favoriteWord = [...words.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "Not enough data";
   const mostUsedEmoji = [...emojis.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-  const viewer = viewerName.trim().toLowerCase();
   const viewerRequests = moneyRequests.get(viewer) || 0;
   const otherRequests = [...moneyRequests.entries()].filter(([sender]) => sender !== viewer).reduce((sum, [, count]) => sum + count, 0);
   const financialRequester = viewerRequests === 0 && otherRequests === 0
     ? "Not enough data"
     : viewerRequests === otherRequests ? "Both" : viewerRequests > otherRequests ? "You" : "Them";
 
-  return { messageCount: messageLines.length, mostActiveTime, favoriteWord, mostUsedEmoji, lateNightMessages, loveYouCount, sorryCount, estimatedLaughs, financialRequester };
+  const totalInitiations = viewerInitiates + partnerInitiates;
+  const viewerInitiatePct = totalInitiations > 0 ? Math.round((viewerInitiates / totalInitiations) * 100) : 50;
+  const viewerAvgWords = viewerMsgCount > 0 ? Math.round((viewerWordCount / viewerMsgCount) * 10) / 10 : 0;
+  const partnerAvgWords = partnerMsgCount > 0 ? Math.round((partnerWordCount / partnerMsgCount) * 10) / 10 : 0;
+
+  return {
+    messageCount: messageLines.length,
+    mostActiveTime,
+    favoriteWord,
+    mostUsedEmoji,
+    lateNightMessages,
+    loveYouCount,
+    sorryCount,
+    estimatedLaughs,
+    financialRequester,
+    viewerInitiatePct,
+    viewerDoubleTexts,
+    partnerDoubleTexts,
+    viewerAvgWords,
+    partnerAvgWords,
+  };
 }
 
 function validResult(value: InsightsResult) {
@@ -410,8 +469,8 @@ export async function POST(request: Request) {
       : `${redacted.text.slice(0, 1_200_000)}\n\n[Middle omitted for request-size safety]\n\n${redacted.text.slice(-1_200_000)}`;
 
     const analysisRequest = {
-      systemInstruction: "You are a brutally honest, razor-sharp relationship analyst. You deliver raw, unfiltered truth, exposing bad habits, red flags, passive aggressiveness, dry responses, double standards, and toxic communication traits without sugarcoating. Always address the viewer directly by name in second person ('You'), and refer to their partner by name ('Them'). Generate direct, unvarnished statements like 'Timilehin, you can do better, Temitayo is trying so hard but you seem cold' or 'Temitayo is not really being a good friend here'. Always create customized dynamic column headers/metrics for each chat so no two chats look identical. Never quote messages verbatim or invent fake milestones.",
-      prompt: `Connection type: ${connectionType}\nRequested focus: ${analysisFocus}\nReport Viewer name: ${viewerName} (address directly as "You" / "${viewerName}")\nChat Partner name: ${personName} (refer to as "Them" / "${personName}")\nDeterministic message count: ${stats.messageCount}\nDeterministic most active time: ${stats.mostActiveTime}\n\nAnalyse this WhatsApp export with brutal honesty.\n1. Address ${viewerName} directly by name in the summary, badSide, and advice.\n2. Provide dynamic category scores (dynamicScores).\n3. Provide 6-8 customized dynamic column headers and metrics (dynamicMetrics) tailored specifically to this chat.\n4. Provide badSide: expose the flaws/bad habits of ${viewerName} ("You") in youFlaws (e.g. "${viewerName}, you can do better..."), flaws of ${personName} ("Them") in themFlaws (e.g. "${personName} is not being a good friend when..."), and relationship red flags (relationshipRedFlags).\n5. Provide advice: a brutally honest reality check speaking directly to ${viewerName}, actionable advice for ${viewerName}, actionable advice for ${personName}, and a bottom-line verdict.\n6. Include four awards, 3 insights, and supported milestones.\n\n<chat_export>\n${modelText}\n</chat_export>`,
+      systemInstruction: "You are a brutally honest relationship analyst and messaging forensics specialist. You deliver raw, unfiltered truth, calling out power imbalances, double-standard response times, double-texting habits, passive aggressiveness, dry 1-word replies, and red flags without sugarcoating. Always address the viewer directly by name in second person ('You'), and refer to their partner by name ('Them'). Include exact metrics for double texting, initiation balance, and message length asymmetry in your dynamic metrics and brutal assessment. Generate direct, unvarnished statements like 'Timilehin, you carry 70% of the conversation energy, while Temitayo replies with dry 3-word answers' or 'Temitayo double texts whenever you go quiet'. Never quote messages verbatim or invent fake milestones.",
+      prompt: `Connection type: ${connectionType}\nRequested focus: ${analysisFocus}\nReport Viewer name: ${viewerName} (address directly as "You" / "${viewerName}")\nChat Partner name: ${personName} (refer to as "Them" / "${personName}")\nDeterministic Stats:\n- Total Messages: ${stats.messageCount}\n- Peak Active Hour: ${stats.mostActiveTime}\n- Conversation Initiation Split: ${viewerName} starts ${stats.viewerInitiatePct}% of conversations.\n- Double Texting: ${viewerName} double-texted ${stats.viewerDoubleTexts} times; ${personName} double-texted ${stats.partnerDoubleTexts} times.\n- Avg Message Length: ${viewerName} averages ${stats.viewerAvgWords} words/msg; ${personName} averages ${stats.partnerAvgWords} words/msg.\n\nAnalyse this WhatsApp export with brutal honesty.\n1. Address ${viewerName} directly by name in the summary, badSide, and advice.\n2. Provide dynamic category scores (dynamicScores).\n3. Provide 6-8 customized dynamic column headers and metrics (dynamicMetrics) tailored specifically to this chat, explicitly incorporating double-texting stats, conversation initiation split, or message length asymmetry.\n4. Provide badSide: expose the flaws/bad habits of ${viewerName} ("You") in youFlaws (e.g. "${viewerName}, you double-text too much..."), flaws of ${personName} ("Them") in themFlaws (e.g. "${personName} is dry and takes hours to reply..."), and relationship red flags (relationshipRedFlags).\n5. Provide advice: a brutally honest reality check speaking directly to ${viewerName}, actionable advice for ${viewerName}, actionable advice for ${personName}, and a bottom-line verdict.\n6. Include four awards, 3 insights, and supported milestones.\n\n<chat_export>\n${modelText}\n</chat_export>`,
       schema: responseSchema,
       maxOutputTokens: 8192,
     };

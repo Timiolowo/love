@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AuthModal } from "@/components/AuthModal";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 
 type User = {
   id: string;
@@ -22,9 +23,32 @@ export default function Home() {
     async function checkUser() {
       try {
         const res = await fetch("/api/auth/me");
-        const data = await res.json() as { user?: User };
-        if (data.user) setUser(data.user);
-      } catch { /* ignore */ }
+        const data = (await res.json()) as { user?: User };
+        if (data.user) {
+          setUser(data.user);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("unsaid_user", JSON.stringify(data.user));
+          }
+          return;
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("unsaid_user");
+        if (stored) {
+          try {
+            setUser(JSON.parse(stored) as User);
+          } catch {
+            /* ignore */
+          }
+        }
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("error")) {
+          setIsAuthOpen(true);
+        }
+      }
     }
     checkUser();
   }, []);
@@ -42,17 +66,6 @@ export default function Home() {
           <p className="eyebrow"><span /> Private conversations, gently begun</p>
           <h1>Things left unsaid,<br /><em>beautifully brought to light.</em></h1>
           <p className="hero-text">Discover the story inside your chats—or begin the conversation you have been afraid to start. Thoughtful, private and always consent-first.</p>
-          <div className="hero-actions">
-            <Link className="button button-primary" href="/insights">
-              Analyse a chat
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="7" y1="17" x2="17" y2="7" />
-                <polyline points="7 7 17 7 17 17" />
-              </svg>
-            </Link>
-            <Link className="button button-secondary" href="/message">Send a private message</Link>
-          </div>
-          <div className="trust-line"><span>Encrypted in transit</span><span>AI safety checks</span><span>You stay in control</span></div>
         </div>
 
         <div className="hero-art" aria-label="A sealed private letter waiting to be opened">
@@ -81,7 +94,7 @@ export default function Home() {
       </section>
 
       <section className="home-story">
-        <div className="overview-copy"><p className="eyebrow"><span /> One emotional beat at a time</p><h2>Lovely enough to feel special. Calm enough to feel trusted.</h2><p>The experience uses warmth for courage—not pressure. Every step explains what happens next and keeps both people in control.</p><div className="home-story-actions"><Link className="button button-primary" href="/insights">Explore Chat Insights</Link><Link className="button button-secondary" href="/message">Explore Private Message</Link></div></div>
+        <div className="overview-copy"><p className="eyebrow"><span /> One emotional beat at a time</p><h2>Lovely enough to feel special. Calm enough to feel trusted.</h2><p>The experience uses warmth for courage—not pressure. Every step explains what happens next and keeps both people in control.</p></div>
         <div className="conversation-preview">
           <div className="conversation-head"><span>Anonymous A</span><small>Private room · 18 min</small></div>
           <div className="safety-notice">♡ Both identities are protected. Reveal only happens when you both agree.</div>
@@ -107,7 +120,7 @@ export default function Home() {
         onUpdateUser={(updated) => setUser(updated)}
       />
 
-      <footer><div><span className="wordmark-seal">U</span><strong>Unsaid</strong></div><p>For the conversations people are afraid to start.</p><span>Private by design · Lagos, Nigeria</span></footer>
+      <Footer />
     </main>
   );
 }

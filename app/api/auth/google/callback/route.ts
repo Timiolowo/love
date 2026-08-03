@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       }),
     });
 
-    const tokenData = await tokenRes.json() as { access_token?: string; id_token?: string };
+    const tokenData = (await tokenRes.json()) as { access_token?: string; id_token?: string };
     if (!tokenData.access_token) {
       throw new Error("Failed to exchange code for token.");
     }
@@ -42,12 +42,14 @@ export async function GET(request: Request) {
     const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-    const googleUser = await userRes.json() as { email?: string; name?: string };
+    const googleUser = (await userRes.json()) as { email?: string; name?: string; given_name?: string };
 
     const email = googleUser.email?.trim().toLowerCase();
     if (!email) throw new Error("No email found in Google profile.");
 
-    let user: { id: string; email: string; credits: number; createdAt: number; updatedAt: number } | null = null;
+    const googleName = googleUser.name || googleUser.given_name || email.split("@")[0];
+    let isNewUser = false;
+    let user: { id: string; email: string; name?: string | null; credits: number; createdAt: number; updatedAt: number } | null = null;
 
     try {
       const db = getDb();
@@ -55,18 +57,25 @@ export async function GET(request: Request) {
         const [existing] = await db.select().from(users).where(eq(users.email, email)).limit(1);
         if (existing) {
           user = existing;
+          // Update name if missing
+          if (!existing.name && googleName) {
+            await db.update(users).set({ name: googleName, updatedAt: Date.now() }).where(eq(users.id, existing.id));
+            user.name = googleName;
+          }
         } else {
+          isNewUser = true;
           const newUserId = `usr_${generateShareId(12)}`;
           const now = Date.now();
           await db.insert(users).values({
             id: newUserId,
             email,
-            credits: 1, // 1 free credit for sign up!
+            name: googleName,
+            credits: 1, // 1 free credit welcome gift!
             createdAt: now,
             updatedAt: now,
           });
           const [inserted] = await db.select().from(users).where(eq(users.id, newUserId)).limit(1);
-          user = inserted || { id: newUserId, email, credits: 1, createdAt: now, updatedAt: now };
+          user = inserted || { id: newUserId, email, name: googleName, credits: 1, createdAt: now, updatedAt: now };
         }
       }
     } catch {
@@ -77,17 +86,30 @@ export async function GET(request: Request) {
       user = {
         id: `usr_${generateShareId(12)}`,
         email,
+        name: googleName,
         credits: 1,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
     }
 
-    return NextResponse.redirect(`${origin}/dashboard?auth=success`, {
-      headers: {
-        "Set-Cookie": createSessionCookie(user.id),
-      },
-    });
+    const redirectUrl = isNewUser ? `${origin}/profile?welcome=true` : `${origin}/profile?auth=success`;
+
+    const response = NextResponse.redirect(redirectUrl);
+    response.headers.set("Set-Cookie", createSessionCookie(user.id));
+    try {
+      response.cookies.set("unsaid_session", user.id, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 30 * 24 * 60 * 60,
+      });
+    } catch {
+      /* ignore if cookies.set unavailable */
+    }
+
+    return response;
   } catch (error) {
     console.error("Google OAuth error:", error);
     return NextResponse.redirect(`${origin}/?error=google_login_failed`);

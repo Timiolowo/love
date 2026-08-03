@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createLogoutCookie } from "@/lib/auth";
 
 export async function POST() {
-  return NextResponse.json(
+  const response = NextResponse.json(
     { success: true },
     {
       headers: {
@@ -10,4 +10,16 @@ export async function POST() {
       },
     }
   );
+  try {
+    response.cookies.set("unsaid_session", "", {
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 0,
+    });
+  } catch {
+    /* ignore */
+  }
+  return response;
 }

@@ -19,32 +19,34 @@ export async function GET(request: Request) {
     if (paystackResult.status && paystackResult.data?.status === "success") {
       const db = getDb();
       if (db) {
-        // Update payment record in D1
-        await db.update(payments)
-          .set({ status: "success" })
-          .where(eq(payments.reference, reference));
-
-        // Fetch payment record to find associated user/email
+        // Fetch payment record FIRST to check status and avoid duplicate credit awards
         const [payment] = await db.select().from(payments).where(eq(payments.reference, reference)).limit(1);
 
-        if (payment?.userId && planType === "account_bundle") {
-          // Add 3 wrap credits to user
-          await db.update(users)
-            .set({
-              credits: sql`${users.credits} + 3`,
-              updatedAt: Date.now(),
-            })
-            .where(eq(users.id, payment.userId));
-        } else if (payment?.guestEmail && planType === "account_bundle") {
-          // If account bundle bought by email, give credits to user by email
-          const [existingUser] = await db.select().from(users).where(eq(users.email, payment.guestEmail)).limit(1);
-          if (existingUser) {
+        if (payment && payment.status !== "success") {
+          // Update payment record in D1
+          await db.update(payments)
+            .set({ status: "success" })
+            .where(eq(payments.reference, reference));
+
+          if (payment.userId && planType === "account_bundle") {
+            // Add 3 wrap credits to user
             await db.update(users)
               .set({
                 credits: sql`${users.credits} + 3`,
                 updatedAt: Date.now(),
               })
-              .where(eq(users.id, existingUser.id));
+              .where(eq(users.id, payment.userId));
+          } else if (payment.guestEmail && planType === "account_bundle") {
+            // If account bundle bought by email, give credits to user by email
+            const [existingUser] = await db.select().from(users).where(eq(users.email, payment.guestEmail)).limit(1);
+            if (existingUser) {
+              await db.update(users)
+                .set({
+                  credits: sql`${users.credits} + 3`,
+                  updatedAt: Date.now(),
+                })
+                .where(eq(users.id, existingUser.id));
+            }
           }
         }
       }

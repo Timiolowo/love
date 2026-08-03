@@ -1,8 +1,9 @@
+import { cookies as getNextCookies } from "next/headers";
 import { getDb } from "@/db";
 import { users, type User } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-const COOKIE_NAME = "unsaid_session";
+export const COOKIE_NAME = "unsaid_session";
 
 export function parseCookies(cookieHeader: string | null): Record<string, string> {
   if (!cookieHeader) return {};
@@ -14,10 +15,22 @@ export function parseCookies(cookieHeader: string | null): Record<string, string
   return cookies;
 }
 
-export async function getCurrentUser(request: Request): Promise<User | null> {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = parseCookies(cookieHeader);
-  const sessionToken = cookies[COOKIE_NAME];
+export async function getCurrentUser(request?: Request): Promise<User | null> {
+  let sessionToken: string | undefined;
+
+  try {
+    const cookieStore = await getNextCookies();
+    sessionToken = cookieStore.get(COOKIE_NAME)?.value;
+  } catch {
+    /* ignore next/headers error */
+  }
+
+  if (!sessionToken && request) {
+    const cookieHeader = request.headers.get("cookie");
+    const cookies = parseCookies(cookieHeader);
+    sessionToken = cookies[COOKIE_NAME];
+  }
+
   if (!sessionToken) return null;
 
   try {
@@ -46,9 +59,11 @@ export async function getCurrentUser(request: Request): Promise<User | null> {
 
 export function createSessionCookie(userId: string): string {
   const maxAge = 30 * 24 * 60 * 60; // 30 days in seconds
-  return `${COOKIE_NAME}=${userId}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${maxAge}`;
+  const isSecure = process.env.NODE_ENV === "production";
+  return `${COOKIE_NAME}=${userId}; Path=/; HttpOnly; SameSite=Lax; ${isSecure ? "Secure; " : ""}Max-Age=${maxAge}`;
 }
 
 export function createLogoutCookie(): string {
-  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`;
+  const isSecure = process.env.NODE_ENV === "production";
+  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; ${isSecure ? "Secure; " : ""}Max-Age=0`;
 }

@@ -7,6 +7,7 @@ import { AuthModal } from "@/components/AuthModal";
 import { PaymentPlanModal } from "@/components/PaymentPlanModal";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 
 type User = {
   id: string;
@@ -260,7 +261,7 @@ export default function InsightsPage() {
       />
 
       <section className="product-hero">
-        <div className="product-intro"><Link className="back-link" href="/">← Back home</Link><p className="eyebrow"><span /> Your conversation, beautifully understood</p><h1>Your chats have<br /><em>a story.</em></h1><p>Upload an exported WhatsApp conversation and turn everyday messages into a thoughtful, shareable relationship Wrapped.</p><div className="product-trust"><span>Server-side Unsaid AI</span><span>Identifiers redacted</span><span>Not stored by Unsaid</span></div></div>
+        <div className="product-intro"><p className="eyebrow"><span /> Your conversation, beautifully understood</p><h1>Your chats have<br /><em>a story.</em></h1><p>Upload an exported WhatsApp conversation and turn everyday messages into a thoughtful, shareable relationship Wrapped.</p></div>
         <div className="wrapped-teaser" aria-hidden="true"><div className="teaser-card teaser-back"><span>11:42 PM</span><small>Your favourite time to gist</small></div><div className="teaser-card teaser-front"><small>Messages exchanged</small><strong>18,642</strong><span>Friendship Wrapped</span></div></div>
       </section>
 
@@ -268,7 +269,7 @@ export default function InsightsPage() {
         <div className="flow-copy">
           <span className="step-chip">{step === "upload" ? "Step 01 · Upload" : step === "questions" ? "Step 02 · A few questions" : "Step 03 · Creating"}</span>
           <h2>{step === "upload" ? "Start with your WhatsApp export." : step === "questions" ? "Before I begin…" : "Something lovely is taking shape."}</h2>
-          <p>{step === "upload" ? "Choose Export Chat and select “Without Media.” Upload the ZIP WhatsApp gives you—we will safely extract the conversation." : step === "questions" ? "A little context helps Unsaid AI notice the right things without guessing what this connection means to you." : "Your identifiers are being redacted before Unsaid AI looks for patterns. The original chat is not saved by Unsaid."}</p>
+          <p>{step === "upload" ? "Choose Export Chat and select “Without Media.” Upload the ZIP WhatsApp gives you—we will safely extract the conversation." : step === "questions" ? "A little context helps Unfiltered AI notice the right things without guessing what this connection means to you." : "Your identifiers are being redacted before Unfiltered AI looks for patterns. The original chat is not saved by Unfiltered."}</p>
           <ol className="mini-steps"><li className={step !== "upload" ? "is-done" : ""}><b>1</b>Export without media</li><li className={step === "processing" ? "is-done" : ""}><b>2</b>Tell us what matters</li><li><b>3</b>Open your Wrapped</li></ol>
         </div>
 
@@ -279,7 +280,7 @@ export default function InsightsPage() {
         </div>}
 
         {step === "questions" && <div className="form-card large-form question-card">
-          <div className="ai-question"><span>✦</span><div><small>UNSAID AI</small><p>I found the conversation. Select who you are so I can address you directly by name with raw, unvarnished insights.</p></div></div>
+          <div className="ai-question"><span>✦</span><div><small>UNFILTERED AI</small><p>I found the conversation. Select who you are so I can address you directly by name with raw, unvarnished insights.</p></div></div>
           {detectedSenders.length > 0 ? (
             <label>Which of these names is YOU in the chat?
               <select value={viewerName} onChange={(event) => {
@@ -296,17 +297,17 @@ export default function InsightsPage() {
           ) : (
             <label>What is your name in this chat?<input className="text-field" value={viewerName} onChange={(event) => setViewerName(event.target.value)} placeholder="Exactly as it appears in WhatsApp" maxLength={80} /><small>This helps address you directly by name in the report.</small></label>
           )}
-          <label>Who is this chat with?<input className="text-field" value={personName} onChange={(event) => setPersonName(event.target.value)} placeholder="Their name or nickname" maxLength={40} /><small>This name personalises your cards and is used by Unsaid AI.</small></label>
+          <label>Who is this chat with?<input className="text-field" value={personName} onChange={(event) => setPersonName(event.target.value)} placeholder="Their name or nickname" maxLength={40} /><small>This name personalises your cards and is used by Unfiltered AI.</small></label>
           <label>What kind of connection is this?<select value={connectionType} onChange={(event) => setConnectionType(event.target.value)}><option>Friendship</option><option>Relationship</option><option>Family</option><option>Business partner</option><option>Classmate</option><option>Other</option></select></label>
           {connectionType === "Other" && <label>Describe the connection<input className="text-field" value={customConnection} onChange={(event) => setCustomConnection(event.target.value)} placeholder="For example: mentor, roommate, childhood friend" maxLength={50} /></label>}
-          <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I understand this chat will be analyzed with Unsaid AI using the actual participant names.</span></label>
+          <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I understand this chat will be analyzed with Unfiltered AI using the actual participant names.</span></label>
           {error && <p className="form-error" role="alert">{error}</p>}
           <div className="question-actions"><button className="quiet-button" onClick={() => setStep("upload")}>← Back</button><button className="button button-primary" disabled={!file || !viewerName.trim() || !personName.trim() || !connectionLabel || !consent || isAnalysing} onClick={handleCreateClick}>Create our Wrapped <span>✦</span></button></div>
         </div>}
 
         {step === "processing" && <div className="processing-card" aria-live="polite">
           <div className="processing-orbit"><span className="processing-heart">♡</span><i /><i /><i /></div>
-          <span className="processing-kicker">Unsaid AI is reading the rhythm</span>
+          <span className="processing-kicker">Unfiltered AI is reading the rhythm</span>
           <h3>{processingMessages[processingStage]}</h3>
           <div className="processing-progress">{processingMessages.map((message, index) => <span key={message} className={index <= processingStage ? "is-active" : ""} />)}</div>
           <p>{personName ? `Creating a ${connectionLabel.toLowerCase()} story for you and ${personName}.` : `Creating your ${connectionLabel.toLowerCase()} story.`}</p>
@@ -341,7 +342,7 @@ export default function InsightsPage() {
       />
 
       <section className="insight-preview-section"><p className="eyebrow"><span /> What you will discover</p><h2>More than numbers.<br />A portrait of the connection.</h2><div className="insight-preview-grid">{previewInsights.map((insight, index) => <article key={insight.title}><span>0{index + 1}</span><strong>{insight.title}</strong><p>{insight.detail}</p></article>)}</div></section>
-      <footer><div><span className="wordmark-seal">U</span><strong>Unsaid</strong></div><Link href="/message">Need to start a conversation instead? →</Link><span>Private by design · Lagos, Nigeria</span></footer>
+      <Footer />
     </main>
   );
 }

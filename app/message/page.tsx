@@ -6,8 +6,41 @@ import { PaymentPlanModal } from "@/components/PaymentPlanModal";
 import { AuthModal } from "@/components/AuthModal";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 
 const intents = ["Confess", "Apologise", "Say thank you", "Clear the air"];
+
+const countryCodes = [
+  { code: "+234", flag: "🇳🇬", name: "Nigeria (+234)" },
+  { code: "+1", flag: "🇺🇸", name: "USA / Canada (+1)" },
+  { code: "+44", flag: "🇬🇧", name: "UK (+44)" },
+  { code: "+233", flag: "🇬🇭", name: "Ghana (+233)" },
+  { code: "+254", flag: "🇰🇪", name: "Kenya (+254)" },
+  { code: "+27", flag: "🇿🇦", name: "South Africa (+27)" },
+  { code: "+91", flag: "🇮🇳", name: "India (+91)" },
+  { code: "+971", flag: "🇦🇪", name: "UAE (+971)" },
+  { code: "+49", flag: "🇩🇪", name: "Germany (+49)" },
+  { code: "+33", flag: "🇫🇷", name: "France (+33)" },
+  { code: "+39", flag: "🇮🇹", name: "Italy (+39)" },
+  { code: "+34", flag: "🇪🇸", name: "Spain (+34)" },
+  { code: "+31", flag: "🇳🇱", name: "Netherlands (+31)" },
+  { code: "+61", flag: "🇦🇺", name: "Australia (+61)" },
+  { code: "+55", flag: "🇧🇷", name: "Brazil (+55)" },
+  { code: "+81", flag: "🇯🇵", name: "Japan (+81)" },
+  { code: "+86", flag: "🇨🇳", name: "China (+86)" },
+  { code: "+255", flag: "🇹🇿", name: "Tanzania (+255)" },
+  { code: "+256", flag: "🇺🇬", name: "Uganda (+256)" },
+  { code: "+225", flag: "🇨🇮", name: "Côte d'Ivoire (+225)" },
+  { code: "+221", flag: "🇸🇳", name: "Senegal (+221)" },
+  { code: "+237", flag: "🇨🇲", name: "Cameroon (+237)" },
+];
+
+function formatPhoneNumber(val: string) {
+  const cleaned = val.replace(/\D/g, "").slice(0, 11);
+  if (cleaned.length <= 3) return cleaned;
+  if (cleaned.length <= 6) return `${cleaned.slice(0, 3)} ${cleaned.slice(3)}`;
+  return `${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(6)}`;
+}
 
 type User = {
   id: string;
@@ -29,6 +62,10 @@ export default function MessagePage() {
   const [intent, setIntent] = useState("Apologise");
   const [message, setMessage] = useState("");
   const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+234");
+  const [recipientName, setRecipientName] = useState("");
+  const [senderPhone, setSenderPhone] = useState("");
+  const [senderCountryCode, setSenderCountryCode] = useState("+234");
   const [ready, setReady] = useState(false);
   const [isRewriting, setIsRewriting] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -44,28 +81,32 @@ export default function MessagePage() {
     async function checkUser() {
       try {
         const res = await fetch("/api/auth/me");
-        const data = await res.json() as { user?: User };
+        const data = (await res.json()) as { user?: User };
         if (data.user) setUser(data.user);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     checkUser();
   }, []);
 
-  async function suggestWording() {
-    if (message.trim().length < 3) return;
+  async function handleSoftenedRewrite() {
+    if (!message.trim()) return;
     setIsRewriting(true);
     setAiError("");
 
     try {
-      const response = await fetch("/api/rewrite", {
+      const res = await fetch("/api/rewrite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, intent }),
       });
-      const payload = await response.json() as { result?: { safe: boolean; issue: string; rewritten: string }; error?: string };
-      if (!response.ok || !payload.result) throw new Error(payload.error || "Rewrite failed.");
-      if (!payload.result.safe) throw new Error(payload.result.issue || "This message cannot be rewritten safely.");
-      setMessage(payload.result.rewritten);
+      const data = (await res.json()) as { softened?: string; result?: { rewritten?: string }; error?: string };
+      const text = data.softened || data.result?.rewritten;
+      if (!res.ok || !text) {
+        throw new Error(data.error || "Failed to rewrite message.");
+      }
+      setMessage(text);
     } catch (caught) {
       setAiError(caught instanceof Error ? caught.message : "Rewrite failed.");
     } finally {
@@ -74,8 +115,11 @@ export default function MessagePage() {
   }
 
   async function handleCreateAnonChat() {
-    if (!message.trim()) return;
+    if (!message.trim() || !phone.trim()) return;
     setIsSending(true);
+
+    const fullPhone = `${countryCode}${phone.replace(/[^0-9]/g, "")}`;
+    const fullSenderPhone = senderPhone.trim() ? `${senderCountryCode}${senderPhone.replace(/[^0-9]/g, "")}` : "";
 
     try {
       const res = await fetch("/api/message/create", {
@@ -84,14 +128,26 @@ export default function MessagePage() {
         body: JSON.stringify({
           intent,
           message: message.trim(),
-          phone: phone.trim(),
+          phone: fullPhone,
+          senderPhone: fullSenderPhone,
+          recipientName: recipientName.trim(),
         }),
       });
 
-      const data = await res.json() as CreatedRoomData & { error?: string };
+      const data = (await res.json()) as CreatedRoomData & { remainingCredits?: number; error?: string };
       if (!res.ok || !data.inviteLink) throw new Error(data.error || "Failed to create anonymous room.");
 
       setCreatedRoom(data);
+      if (typeof data.remainingCredits === "number" && user) {
+        setUser({ ...user, credits: data.remainingCredits });
+      }
+      try {
+        const meRes = await fetch("/api/auth/me");
+        const meData = (await meRes.json()) as { user?: User };
+        if (meData.user) setUser(meData.user);
+      } catch {
+        /* ignore */
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to create private message.");
     } finally {
@@ -115,7 +171,7 @@ export default function MessagePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planType, currency, email: guestEmail || user?.email }),
       });
-      const data = await res.json() as { authorizationUrl?: string; error?: string };
+      const data = (await res.json()) as { authorizationUrl?: string; error?: string };
       if (data.authorizationUrl) {
         window.location.href = data.authorizationUrl;
       } else {
@@ -133,8 +189,6 @@ export default function MessagePage() {
     setTimeout(() => setCopied(false), 2500);
   }
 
-  const displayName = user?.name || user?.email.split("@")[0] || "User";
-
   return (
     <main className="product-page message-page">
       <Navbar
@@ -145,25 +199,19 @@ export default function MessagePage() {
 
       <section className="product-hero message-product-hero">
         <div className="product-intro">
-          <Link className="back-link" href="/">← Back home</Link>
           <p className="eyebrow"><span /> Private conversations, gently begun</p>
           <h1>Say what matters.<br /><em>Stay private.</em></h1>
           <p>The recipient chooses whether to open your message. Your identity remains protected until you both agree to reveal it.</p>
-          <div className="product-trust">
-            <span>Consent first</span>
-            <span>Unsaid AI wording assistance</span>
-            <span>Protected Anonymous Room</span>
-          </div>
         </div>
 
         <div className="message-invite-preview">
           <div className="invite-seal">♡</div>
           <span>Private invitation</span>
-          <h3>Someone has sent you a thoughtful anonymous message.</h3>
+          <h3>{recipientName.trim() ? `Hey ${recipientName.trim()}, someone has sent you a message.` : "Someone has sent you a thoughtful anonymous message."}</h3>
           <p>You can choose to read it or decline. Your decision stays private.</p>
           <div>
-            <button>Open message</button>
-            <button>Decline</button>
+            <button type="button">Open message</button>
+            <button type="button">Decline</button>
           </div>
         </div>
       </section>
@@ -172,10 +220,10 @@ export default function MessagePage() {
         <div className="flow-copy">
           <span className="step-chip">Step 01 · Compose</span>
           <h2>What would you say if fear was not in the way?</h2>
-          <p>Write naturally. Unsaid AI can help soften the wording while preserving your meaning, and refuses to assist threatening, coercive, or privacy-violating messages.</p>
+          <p>Write naturally. Unfiltered AI can help soften the wording while preserving your meaning, and refuses to assist threatening, coercive, or privacy-violating messages.</p>
           <div className="recipient-preview">
             <span>What they receive first</span>
-            <p>You have received a private anonymous message. The sender delivered it securely through Unsaid. You can choose to read it or decline.</p>
+            <p>{recipientName.trim() ? `Hey ${recipientName.trim()}, you have received a private anonymous message. Delivered securely through Unfiltered.` : "You have received a private anonymous message. The sender delivered it securely through Unfiltered. You can choose to read it or decline."}</p>
             <small>Open message →</small>
           </div>
         </div>
@@ -198,7 +246,7 @@ export default function MessagePage() {
                 Share on WhatsApp
               </a>
 
-              <button className="button button-secondary button-full" onClick={copyInviteLink}>
+              <button type="button" className="button button-secondary button-full" onClick={copyInviteLink}>
                 {copied ? (
                   <>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -224,14 +272,63 @@ export default function MessagePage() {
         ) : !ready ? (
           <div className="form-card large-form">
             <label>
-              Recipient’s WhatsApp number (optional)
+              <span>Recipient’s name *</span>
+              <input
+                type="text"
+                placeholder="e.g. Sarah, Tobi"
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+                className="text-field"
+                maxLength={40}
+                required
+              />
+            </label>
+
+            <label>
+              <span>Recipient’s WhatsApp number *</span>
               <div className="phone-field">
-                <span>+234</span>
+                <select
+                  value={countryCode}
+                  onChange={(e) => setCountryCode(e.target.value)}
+                  className="country-select"
+                  aria-label="Select Country Code"
+                >
+                  {countryCodes.map((c) => (
+                    <option key={c.code + c.name} value={c.code}>
+                      {c.flag} {c.code}
+                    </option>
+                  ))}
+                </select>
                 <input
                   inputMode="tel"
                   placeholder="801 234 5678"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
+                  required
+                />
+              </div>
+            </label>
+
+            <label>
+              <span>Your phone number (optional — for identity reveal)</span>
+              <div className="phone-field">
+                <select
+                  value={senderCountryCode}
+                  onChange={(e) => setSenderCountryCode(e.target.value)}
+                  className="country-select"
+                  aria-label="Select Your Country Code"
+                >
+                  {countryCodes.map((c) => (
+                    <option key={c.code + c.name} value={c.code}>
+                      {c.flag} {c.code}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  inputMode="tel"
+                  placeholder="801 234 5678"
+                  value={senderPhone}
+                  onChange={(e) => setSenderPhone(formatPhoneNumber(e.target.value))}
                 />
               </div>
             </label>
@@ -253,59 +350,51 @@ export default function MessagePage() {
             </fieldset>
 
             <label>
-              Your message
+              <span>Your message</span>
               <textarea
+                placeholder="Say what has been on your mind..."
                 value={message}
-                onChange={(event) => { setMessage(event.target.value); setAiError(""); }}
-                placeholder="Say what has been on your mind…"
-                rows={6}
-                maxLength={4000}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={5}
+                maxLength={2000}
               />
             </label>
 
             <button
-              className="ai-button"
               type="button"
-              disabled={message.trim().length < 3 || isRewriting}
-              onClick={suggestWording}
+              className="ai-button"
+              disabled={!message.trim() || isRewriting}
+              onClick={handleSoftenedRewrite}
             >
-              ✦ {isRewriting ? "Unsaid AI is rewriting…" : "Help me say this more gently"}
+              ✦ {isRewriting ? "Rewriting with Unfiltered AI..." : "Help me say this more gently"}
             </button>
 
             {aiError && <p className="form-error" role="alert">{aiError}</p>}
 
-            <div className="payment-row">
-              <button
-                className="button button-primary button-full"
-                disabled={!message.trim()}
-                onClick={() => {
-                  if (!user) {
-                    setIsAuthOpen(true);
-                  } else {
-                    setReady(true);
-                  }
-                }}
-              >
-                Continue to delivery
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-              </button>
-            </div>
+            <button
+              type="button"
+              className="button button-primary button-full"
+              disabled={!message.trim() || !phone.trim() || !recipientName.trim()}
+              onClick={() => setReady(true)}
+            >
+              Continue to delivery <span>→</span>
+            </button>
           </div>
         ) : (
-          <div className="delivery-ready">
-            <div className="ready-seal">✓</div>
+          <div className="form-card large-form">
             <span className="result-tag">Ready for secure delivery</span>
             <h3>Your message feels thoughtful and safe to send.</h3>
             <p>The recipient will see the invitation first. Your message remains sealed until they accept.</p>
             <blockquote>{message}</blockquote>
             <button
+              type="button"
               className="button button-primary button-full"
               disabled={isSending}
               onClick={handlePaymentOrSend}
             >
               {isSending ? "Sealing room…" : user && user.credits > 0 ? "Use 1 Credit & Deliver" : "Unlock & Deliver Message →"}
             </button>
-            <button className="quiet-button" onClick={() => setReady(false)}>Edit message</button>
+            <button type="button" className="quiet-button" onClick={() => setReady(false)}>Edit message</button>
           </div>
         )}
       </section>
@@ -356,11 +445,7 @@ export default function MessagePage() {
         </div>
       </section>
 
-      <footer>
-        <div><span className="wordmark-seal">U</span><strong>Unsaid</strong></div>
-        <Link href="/insights">Want to analyse an existing chat? →</Link>
-        <span>Private by design · Lagos, Nigeria</span>
-      </footer>
+      <Footer />
     </main>
   );
 }

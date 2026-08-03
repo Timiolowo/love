@@ -32,7 +32,12 @@ export async function POST(request: Request) {
     });
 
     if (typeof result?.safe !== "boolean" || typeof result?.issue !== "string" || typeof result?.rewritten !== "string") throw new Error("Invalid structured result.");
-    return NextResponse.json({ result }, { headers: { "Cache-Control": "no-store" } });
+
+    if (!result.safe) {
+      return NextResponse.json({ error: result.issue || "This message cannot be rewritten safely." }, { status: 400 });
+    }
+
+    return NextResponse.json({ softened: result.rewritten, result }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof GeminiConfigurationError) return NextResponse.json({ error: "Gemini is not configured yet." }, { status: 503 });
     return NextResponse.json({ error: "We could not rewrite this message right now." }, { status: 502 });

@@ -154,18 +154,23 @@ export default function InsightsResultPage() {
   };
 
   async function shareReport() {
-    const text = `${viewerName} + ${personName}: ${result.compatibility.overall}% ${connectionLabel} compatibility ✦ ${result.messageCount.toLocaleString()} messages ✦ Verdict: ${adviceData.verdict} — made with Unsaid`;
-    try {
-      if (navigator.share) await navigator.share({ title: "Our Chat, Unfiltered", text });
-      else await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch { /* User can cancel native share */ }
+    const text = `${viewerName} + ${personName}: ${result.compatibility.overall}% ${connectionLabel} compatibility ✦ ${result.messageCount.toLocaleString()} messages ✦ Verdict: ${adviceData.verdict} — made with Unfiltered`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${viewerName} + ${personName} Wrapped`, text, url: window.location.href });
+      } catch {
+        // Fallback to clipboard if share was cancelled or failed
+      }
+    } else {
+      navigator.clipboard.writeText(`${text}\n${window.location.href}`);
+      alert("Wrapped summary copied to clipboard!");
+    }
   }
 
   return (
-    <main className={`wrapped-report-page wrapped-slide-${slide}`}>
-      <header className="wrapped-report-nav"><Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unsaid</span></Link><span>{connectionLabel} Wrapped</span><Link href="/insights">Close</Link></header>
+    <main className="product-page wrapped-result-page">
+      <header className="wrapped-report-nav"><Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unfiltered</span></Link><span>{connectionLabel} Wrapped</span><Link href="/insights">Close</Link></header>
       <div className="wrapped-progress" aria-label={`Chapter ${slide + 1} of ${totalSlides}`}>{Array.from({ length: totalSlides }, (_, index) => <button key={index} aria-label={`Go to chapter ${index + 1}`} className={index <= slide ? "is-active" : ""} onClick={() => setSlide(index)} />)}</div>
 
       <section className="wrapped-chapter" key={slide}>

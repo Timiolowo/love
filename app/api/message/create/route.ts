@@ -8,7 +8,7 @@ import { eq, sql } from "drizzle-orm";
 export async function POST(request: Request) {
   try {
     const user = await getCurrentUser(request);
-    const body = await request.json() as {
+    const body = (await request.json()) as {
       intent?: string;
       message?: string;
       phone?: string;
@@ -23,53 +23,55 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Please enter a message to send." }, { status: 400 });
     }
 
+    const db = getDb();
+    if (!db) {
+      return NextResponse.json({ error: "Database unavailable. Please try again." }, { status: 503 });
+    }
+
+    // Check & deduct credits if user is logged in
+    if (user) {
+      if (user.credits <= 0) {
+        return NextResponse.json({ error: "You have 0 credits. Please get more credits to send a message." }, { status: 402 });
+      }
+      await db
+        .update(users)
+        .set({
+          credits: sql`MAX(0, ${users.credits} - 1)`,
+          updatedAt: Date.now(),
+        })
+        .where(eq(users.id, user.id));
+    }
+
     const chatId = `ac_${generateShareId(10)}`;
     const senderToken = `stk_${generateShareId(16)}`;
     const recipientToken = `rtk_${generateShareId(16)}`;
     const now = Date.now();
     const expiresAt = now + 14 * 24 * 60 * 60 * 1000; // 14 days
 
-    try {
-      const db = getDb();
-      if (db) {
-        // Check credits if logged in
-        if (user && user.credits > 0) {
-          await db.update(users)
-            .set({
-              credits: sql`MAX(0, ${users.credits} - 1)`,
-              updatedAt: Date.now(),
-            })
-            .where(eq(users.id, user.id));
-        }
+    // Insert room into DB
+    await db.insert(anonChats).values({
+      id: chatId,
+      senderId: user?.id || null,
+      recipientPhone: phone || null,
+      intent,
+      initialMessage,
+      status: "pending",
+      senderRevealed: 0,
+      recipientRevealed: 0,
+      senderToken,
+      recipientToken,
+      createdAt: now,
+      expiresAt,
+    });
 
-        // Insert anon chat record into D1
-        await db.insert(anonChats).values({
-          id: chatId,
-          senderId: user?.id || null,
-          recipientPhone: phone || null,
-          intent,
-          initialMessage,
-          status: "pending",
-          senderRevealed: 0,
-          recipientRevealed: 0,
-          senderToken,
-          recipientToken,
-          createdAt: now,
-          expiresAt,
-        });
-
-        // Insert initial message into anon_messages
-        await db.insert(anonMessages).values({
-          id: `am_${generateShareId(12)}`,
-          chatId,
-          senderRole: "sender",
-          text: initialMessage,
-          createdAt: now,
-        });
-      }
-    } catch (dbErr) {
-      console.warn("Could not write anon chat to D1:", dbErr);
-    }
+    // Insert initial message into DB
+    await db.insert(anonMessages).values({
+      id: `am_${generateShareId(12)}`,
+      chatId,
+      senderRole: "sender",
+      text: initialMessage,
+      createdAt: now,
+    });
 
     const origin = request.headers.get("origin") || request.headers.get("referer") || "http://localhost:3000";
     const hostOrigin = new URL(origin).origin;
@@ -90,9 +92,11 @@ export async function POST(request: Request) {
       inviteLink,
       senderLink,
       whatsappUrl,
+      remainingCredits: user ? Math.max(0, user.credits - 1) : 0,
     });
   } catch (error) {
     console.error("Error creating anonymous chat:", error);
-    return NextResponse.json({ error: "Failed to create anonymous message." }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Failed to create anonymous message.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

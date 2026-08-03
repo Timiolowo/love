@@ -1,6 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -11,17 +18,45 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: base,
-    title: "Unsaid — Private conversations, gently begun",
-    description: "Discover the story inside your chats or begin a thoughtful, consent-first anonymous conversation.",
-    openGraph: {
-      title: "Things left unsaid, beautifully brought to light.",
-      description: "Chat Insights and consent-first anonymous conversations, together in one thoughtful place.",
-      images: [{ url: socialImage, width: 1536, height: 1024, alt: "A private letter sealed with a pink glass heart" }],
+    title: "Unfiltered — WhatsApp Chat Analysis & Relationship Wrapped",
+    description: "Uncover the raw, unvarnished truth inside your WhatsApp chats. Red flag exposure, compatibility scores, dynamic chat metrics, and brutal honesty.",
+    icons: {
+      icon: [
+        { url: "/favicon.svg", type: "image/svg+xml" },
+        { url: "/logo.svg", type: "image/svg+xml" },
+      ],
+      shortcut: "/favicon.svg",
+      apple: "/favicon.svg",
     },
-    twitter: { card: "summary_large_image", images: [socialImage] },
+    openGraph: {
+      title: "Unfiltered — WhatsApp Chat Analysis & Relationship Wrapped",
+      description: "Discover the raw truth inside your WhatsApp chats. Red flag exposure, compatibility scores, and brutal honesty.",
+      url: base.toString(),
+      siteName: "Unfiltered",
+      images: [
+        {
+          url: socialImage,
+          width: 1536,
+          height: 1024,
+          alt: "Unfiltered WhatsApp Chat Analysis & Relationship Wrapped",
+        },
+      ],
+      locale: "en_US",
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: "Unfiltered — WhatsApp Chat Analysis & Relationship Wrapped",
+      description: "Uncover red flags, double-texting stats, compatibility scores, and brutal honesty from your WhatsApp chat export.",
+      images: [socialImage],
+    },
   };
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
 }

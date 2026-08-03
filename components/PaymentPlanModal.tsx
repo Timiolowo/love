@@ -25,7 +25,7 @@ export function PaymentPlanModal({
   userEmail?: string;
   onOpenAuth?: () => void;
 }) {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2>(userEmail ? 2 : 1);
   const [currency, setCurrency] = useState<Currency>("NGN");
   const [emailInput, setEmailInput] = useState("");
   const [error, setError] = useState("");
