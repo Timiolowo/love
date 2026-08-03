@@ -36,6 +36,7 @@ export const payments = sqliteTable("payments", {
 export const anonChats = sqliteTable("anon_chats", {
   id: text("id").primaryKey(),
   senderId: text("sender_id").references(() => users.id, { onDelete: "set null" }),
+  recipientName: text("recipient_name"),
   recipientPhone: text("recipient_phone"),
   intent: text("intent").notNull(), // "Confess" | "Apologise" | "Say thank you" | "Clear the air"
   initialMessage: text("initial_message").notNull(),
@@ -46,6 +47,7 @@ export const anonChats = sqliteTable("anon_chats", {
   recipientToken: text("recipient_token").notNull(),
   createdAt: integer("created_at").notNull(),
   expiresAt: integer("expires_at").notNull(),
+  disruptedAt: integer("disrupted_at"),
 });
 
 export const anonMessages = sqliteTable("anon_messages", {
@@ -56,8 +58,14 @@ export const anonMessages = sqliteTable("anon_messages", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const claimedTrials = sqliteTable("claimed_trials", {
+  email: text("email").primaryKey(),
+  claimedAt: integer("claimed_at").notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type Wrap = typeof wraps.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type AnonChat = typeof anonChats.$inferSelect;
 export type AnonMessage = typeof anonMessages.$inferSelect;
+export type ClaimedTrial = typeof claimedTrials.$inferSelect;

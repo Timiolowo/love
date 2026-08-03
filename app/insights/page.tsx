@@ -233,13 +233,13 @@ export default function InsightsPage() {
     }
   }
 
-  async function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency: string = "NGN") {
+  async function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency: string = "NGN", creditsCount?: number) {
     setIsPlanModalOpen(false);
     try {
       const res = await fetch("/api/payment/initialize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planType, currency, email: guestEmail || user?.email }),
+        body: JSON.stringify({ planType, currency, email: guestEmail || user?.email, userId: user?.id, creditsCount }),
       });
       const data = await res.json() as { authorizationUrl?: string; error?: string };
       if (data.authorizationUrl) {

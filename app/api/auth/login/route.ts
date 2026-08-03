@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/db";
-import { users } from "@/db/schema";
+import { users, claimedTrials } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { createSessionCookie } from "@/lib/auth";
 import { generateShareId } from "@/lib/share";
@@ -30,15 +30,28 @@ export async function POST(request: Request) {
           isNewUser = true;
           const newUserId = `usr_${generateShareId(12)}`;
           const now = Date.now();
+
+          let initialCredits = 1;
+          try {
+            const [claimed] = await db.select().from(claimedTrials).where(eq(claimedTrials.email, email)).limit(1);
+            if (claimed) {
+              initialCredits = 0;
+            } else {
+              await db.insert(claimedTrials).values({ email, claimedAt: now });
+            }
+          } catch {
+            /* ignore */
+          }
+
           await db.insert(users).values({
             id: newUserId,
             email,
-            credits: 1, // 1 free credit on sign up for free trial!
+            credits: initialCredits,
             createdAt: now,
             updatedAt: now,
           });
           const [inserted] = await db.select().from(users).where(eq(users.id, newUserId)).limit(1);
-          user = inserted || { id: newUserId, email, credits: 1, createdAt: now, updatedAt: now };
+          user = inserted || { id: newUserId, email, credits: initialCredits, createdAt: now, updatedAt: now };
         }
       }
     } catch (dbError) {

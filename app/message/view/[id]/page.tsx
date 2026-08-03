@@ -8,6 +8,8 @@ type ChatDetails = {
   id: string;
   intent: string;
   status: string;
+  recipientName?: string | null;
+  initialMessageTeaser?: string | null;
   createdAt: number;
   expiresAt: number;
   isExpired: boolean;
@@ -116,28 +118,37 @@ export default function ViewAnonMessagePage({ params }: { params: Promise<{ id: 
       <section className="product-hero message-product-hero">
         <div className="message-invite-card">
           <div className="invite-seal">♡</div>
-          <span className="invite-tag">Private Invitation · {chat.intent}</span>
-          <h2>Someone sent you a thoughtful anonymous message.</h2>
-          <p>The sender paid to deliver this message securely through Unsaid. You can choose whether to open it or decline.</p>
+          <span className="invite-tag">PRIVATE INVITATION · {chat.intent}</span>
+          <h2>Hello {chat.recipientName || "there"}, someone has sent you a thoughtful anonymous message.</h2>
+          <p>You can choose to read it or decline. Your decision stays private.</p>
 
-          <div className="invite-privacy-notice">
-            <span>🔒 Your decision is private. If you decline, your identity remains protected.</span>
+          {chat.initialMessageTeaser && (
+            <div className="invite-teaser-box">
+              <small>Message Teaser Preview</small>
+              <p>“{chat.initialMessageTeaser}”</p>
+            </div>
+          )}
+
+          <div className="invite-benefit-box">
+            <span>💡 <strong>Account Benefit:</strong> Create a free account or sign in after opening to save your conversation history, monitor replies in real-time, and manage all your private rooms.</span>
           </div>
 
           <div className="invite-button-group">
             <button
-              className="button button-primary button-full"
+              className="button button-primary"
               disabled={actionLoading}
               onClick={() => handleDecision("accept")}
+              style={{ minWidth: "160px" }}
             >
-              {actionLoading ? "Unsealing message…" : "Accept & Open Message →"}
+              {actionLoading ? "Unsealing…" : "Open message"}
             </button>
             <button
-              className="button button-secondary button-full"
+              className="button button-secondary"
               disabled={actionLoading}
               onClick={() => handleDecision("decline")}
+              style={{ minWidth: "140px" }}
             >
-              Decline Invitation
+              Decline
             </button>
           </div>
         </div>

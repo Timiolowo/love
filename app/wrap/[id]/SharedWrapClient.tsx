@@ -22,6 +22,7 @@ type InsightsResult = {
   compatibility: { overall: number; communication: number; humor: number; affection: number; adventure: number };
   dynamicScores?: Array<{ category: string; score: number }>;
   dynamicMetrics?: Array<{ label: string; value: string; comment: string }>;
+  metricsHeadline?: string;
   relationshipHealth: string;
   loveLanguage: string;
   playfulAwards: Array<{ title: string; winner: "You" | "Them" | "Both"; confidence: number; reason: string }>;
@@ -50,13 +51,14 @@ type WrapData = {
   createdAt: number;
 };
 
-const totalSlides = 8;
+const totalSlides = 9;
 
 export default function SharedWrapClient({ id }: { id: string }) {
   const [wrap, setWrap] = useState<WrapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [slide, setSlide] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function loadWrap() {
@@ -87,7 +89,7 @@ export default function SharedWrapClient({ id }: { id: string }) {
     return (
       <main className="empty-report">
         <span className="wordmark-seal">U</span>
-        <h2>Unsealing shared Wrapped…</h2>
+        <p>Unsealing private Wrapped report...</p>
       </main>
     );
   }
@@ -97,7 +99,7 @@ export default function SharedWrapClient({ id }: { id: string }) {
       <main className="empty-report">
         <span className="wordmark-seal">U</span>
         <h1>{error || "Report Not Found"}</h1>
-        <p>This share link may have expired (14-day limit) or been disabled by its owner.</p>
+        <p>This share link may have expired (14-day limit) or been removed by its owner.</p>
         <Link className="button button-primary" href="/insights">Create your own Wrapped →</Link>
       </main>
     );
@@ -108,13 +110,14 @@ export default function SharedWrapClient({ id }: { id: string }) {
       <main className="empty-report">
         <span className="wordmark-seal">⌛</span>
         <h1>This Wrapped link has expired.</h1>
-        <p>Shared links automatically expire after 14 days to preserve chat privacy.</p>
+        <p>Shared links automatically expire after 14 days to preserve conversation privacy.</p>
         <Link className="button button-primary" href="/insights">Create your own Wrapped →</Link>
       </main>
     );
   }
 
   const { result, personName, viewerName, connection } = wrap;
+  const connectionLabel = connection || "Chat";
 
   const winner = (value: "You" | "Them" | "Both" | "Not enough data") =>
     value === "You" ? viewerName || "You" : value === "Them" ? personName || "Them" : value;
@@ -128,157 +131,282 @@ export default function SharedWrapClient({ id }: { id: string }) {
         ["Adventure", result.compatibility.adventure],
       ] as const;
 
+  const dynamicMetricsList = result.dynamicMetrics && result.dynamicMetrics.length > 0
+    ? result.dynamicMetrics
+    : [
+        { label: "Total Messages", value: result.messageCount.toLocaleString(), comment: "Messages exchanged" },
+        { label: "Most-Used Emoji", value: result.mostUsedEmoji, comment: "Top emoji" },
+        { label: "Favourite Word", value: `“${result.favoriteWord}”`, comment: "Most frequent word" },
+        { label: "Midnight Messages", value: result.lateNightMessages.toLocaleString(), comment: "Sent after 12 AM" },
+        { label: "Apologies Spotted", value: result.sorryCount.toLocaleString(), comment: "Times sorry was said" },
+        { label: "Estimated Laughs", value: result.estimatedLaughs.toLocaleString(), comment: "Laughs shared" },
+      ];
+
+  const youFlaws = result.badSide?.youFlaws || [
+    { title: "Left On Read Tendency", detail: "Has a habit of disappearing mid-conversation without context." },
+    { title: "Selective Response", detail: "Only replies quickly to topic changes that interest them." }
+  ];
+  const themFlaws = result.badSide?.themFlaws || [
+    { title: "Dry One-Word Replies", detail: "Often responds with 'K', 'lol', or 'ok' after detailed messages." },
+    { title: "Passive Aggressive Hints", detail: "Drops cryptic statements instead of saying what is directly on their mind." }
+  ];
+  const redFlags = result.badSide?.relationshipRedFlags || [
+    { title: "Unbalanced Effort", detail: "One person carries 70% of the conversation starter energy." },
+    { title: "Unresolved Friction", detail: "Difficult topics get swept under the rug instead of resolved." }
+  ];
+
+  const adviceData = result.advice || {
+    realityCheck: "This chat displays high emotional energy but frequent miscommunication gaps that create unnecessary tension.",
+    adviceForYou: [`Stop waiting for ${personName} to read between the lines—be direct.`, "Don't double text when they go quiet."],
+    adviceForThem: ["Put more effort into initiating conversations.", "Acknowledge feelings before changing the topic."],
+    verdict: "Needs direct communication and equal effort.",
+  };
+
+  async function shareReport() {
+    const text = `${viewerName} + ${personName}: ${result.compatibility.overall}% ${connectionLabel} compatibility ✦ ${result.messageCount.toLocaleString()} messages ✦ Verdict: ${adviceData.verdict} — made with Unfiltered`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${viewerName} + ${personName} Wrapped`, text, url: window.location.href });
+      } catch {
+        /* ignore */
+      }
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
+  }
+
   return (
-    <main className="insights-result-page">
-      <nav className="site-nav product-nav">
-        <Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unfiltered</span></Link>
-        <span className="product-nav-title">{connection} Wrapped · {viewerName} &amp; {personName}</span>
-        <Link className="nav-action button button-primary" href="/insights">Create Yours</Link>
-      </nav>
+    <main className={`product-page wrapped-report-page wrapped-slide-${slide}`}>
+      <header className="wrapped-report-nav">
+        <Link className="wordmark" href="/">
+          <span className="wordmark-seal">U</span>
+          <span>Unfiltered</span>
+        </Link>
+        <span>{connectionLabel} Wrapped</span>
+        <Link href="/dashboard">Dashboard</Link>
+      </header>
 
-      <section className="slides-container">
-        <div className="slide-progress">
-          {Array.from({ length: totalSlides }).map((_, index) => (
-            <button
-              key={index}
-              className={`progress-bar ${index === slide ? "is-active" : index < slide ? "is-complete" : ""}`}
-              onClick={() => setSlide(index)}
-              aria-label={`Go to slide ${index + 1}`}
-            />
-          ))}
-        </div>
+      <div className="wrapped-progress" aria-label={`Chapter ${slide + 1} of ${totalSlides}`}>
+        {Array.from({ length: totalSlides }, (_, index) => (
+          <button
+            key={index}
+            aria-label={`Go to chapter ${index + 1}`}
+            className={index <= slide ? "is-active" : ""}
+            onClick={() => setSlide(index)}
+          />
+        ))}
+      </div>
 
-        {/* Slide 0: Cover */}
+      <section className="wrapped-chapter" key={slide}>
+        {/* Slide 0: Overview */}
         {slide === 0 && (
-          <article className="result-slide cover-slide">
-            <span className="eyebrow">{connection} Wrapped</span>
-            <h1>{result.title}</h1>
-            <p className="summary">{result.summary}</p>
-            <div className="participants-pill">
-              <span>{viewerName}</span>
-              <small>&amp;</small>
-              <span>{personName}</span>
+          <div className="chapter-intro">
+            <p className="wrapped-kicker">Our story, quantified &amp; unfiltered</p>
+            <h1>{viewerName}<span>+</span>{personName}</h1>
+            <p>{result.title}</p>
+            <div className="compatibility-orb">
+              <small>Chemistry</small>
+              <strong>{result.compatibility.overall}%</strong>
+              <span>{result.relationshipHealth}</span>
             </div>
-          </article>
+          </div>
         )}
 
-        {/* Slide 1: Highlights */}
+        {/* Slide 1: Dynamic DNA */}
         {slide === 1 && (
-          <article className="result-slide">
-            <span className="eyebrow">Highlights</span>
-            <h2>Inside the conversation</h2>
-            <div className="metrics-grid">
-              {(result.dynamicMetrics || []).slice(0, 6).map((m, idx) => (
-                <div key={idx} className="metric-card">
-                  <small>{m.label}</small>
-                  <strong>{m.value}</strong>
-                  <span>{m.comment}</span>
+          <div className="chapter-scores">
+            <div>
+              <p className="wrapped-kicker">Dynamic Relationship DNA</p>
+              <h2>{result.relationshipHealth}<br /><em>is the honest verdict.</em></h2>
+              <p>{result.summary}</p>
+            </div>
+            <div className="score-card">
+              <div className="score-main">
+                <span>Overall chemistry</span>
+                <strong>{result.compatibility.overall}%</strong>
+              </div>
+              {scores.map(([label, score]) => (
+                <div className="score-row" key={label}>
+                  <span>{label}</span>
+                  <div><i style={{ width: `${score}%` }} /></div>
+                  <strong>{score}%</strong>
                 </div>
               ))}
+              <small>Custom dynamic scores generated specifically from your chat patterns.</small>
             </div>
-          </article>
+          </div>
         )}
 
-        {/* Slide 2: Category Scores */}
+        {/* Slide 2: Dynamic Metrics */}
         {slide === 2 && (
-          <article className="result-slide">
-            <span className="eyebrow">Relationship Scores</span>
-            <h2>Overall Score: {result.compatibility.overall}%</h2>
-            <div className="compatibility-bars">
-              {scores.map(([label, value]) => (
-                <div key={label} className="bar-row">
-                  <div className="bar-label"><span>{label}</span><strong>{value}%</strong></div>
-                  <div className="bar-track"><div className="bar-fill" style={{ width: `${value}%` }} /></div>
-                </div>
+          <div className="chapter-numbers">
+            <p className="wrapped-kicker">Dynamic Chat Metrics</p>
+            <h2>{result.metricsHeadline || `${result.messageCount.toLocaleString()} messages exchanged.`}</h2>
+            <div className="numbers-grid">
+              {dynamicMetricsList.map((item, index) => (
+                <article key={item.label}>
+                  <span>0{index + 1}</span>
+                  <small>{item.label}</small>
+                  <strong>{item.value}</strong>
+                  <p className="metric-comment">{item.comment}</p>
+                </article>
               ))}
             </div>
-          </article>
+          </div>
         )}
 
         {/* Slide 3: Awards */}
         {slide === 3 && (
-          <article className="result-slide">
-            <span className="eyebrow">Superlatives</span>
-            <h2>Chat Awards</h2>
-            <div className="awards-grid">
+          <div className="chapter-awards">
+            <p className="wrapped-kicker">And the award goes to…</p>
+            <h2>Unfiltered<br /><em>superlatives.</em></h2>
+            <div className="award-grid">
               {result.playfulAwards.map((award, index) => (
-                <div key={index} className="award-card">
-                  <span className="award-winner">{winner(award.winner)}</span>
-                  <h3>{award.title}</h3>
+                <article key={award.title}>
+                  <span>{["🔥", "🎯", "⚡️", "✨"][index]}</span>
+                  <small>{award.title}</small>
+                  <strong>{winner(award.winner)}</strong>
                   <p>{award.reason}</p>
-                </div>
+                  <i>{award.confidence}% honest assessment</i>
+                </article>
               ))}
             </div>
-          </article>
+          </div>
         )}
 
-        {/* Slide 4: Flaws */}
+        {/* Slide 4: The Bad Side & Red Flags */}
         {slide === 4 && (
-          <article className="result-slide">
-            <span className="eyebrow">The Bad Side</span>
-            <h2>Hidden Flaws Exposed</h2>
-            <div className="flaws-sections">
-              <div className="flaws-group">
-                <h3>{viewerName}'s Flaws</h3>
-                {(result.badSide?.youFlaws || []).map((f, i) => (
-                  <div key={i} className="flaw-item"><strong>{f.title}</strong><p>{f.detail}</p></div>
+          <div className="chapter-bad-side">
+            <p className="wrapped-kicker">The Unfiltered Expose</p>
+            <h2>The bad side.<br /><em>Let’s stop pretending.</em></h2>
+            <div className="bad-side-grid">
+              <div className="flaw-card">
+                <span className="flaw-badge">Flaws of {viewerName || "You"}</span>
+                {youFlaws.map((f) => (
+                  <div className="flaw-item" key={f.title}><strong>{f.title}</strong><p>{f.detail}</p></div>
                 ))}
               </div>
-              <div className="flaws-group">
-                <h3>{personName}'s Flaws</h3>
-                {(result.badSide?.themFlaws || []).map((f, i) => (
-                  <div key={i} className="flaw-item"><strong>{f.title}</strong><p>{f.detail}</p></div>
+              <div className="flaw-card">
+                <span className="flaw-badge flaw-them">Flaws of {personName || "Them"}</span>
+                {themFlaws.map((f) => (
+                  <div className="flaw-item" key={f.title}><strong>{f.title}</strong><p>{f.detail}</p></div>
+                ))}
+              </div>
+              <div className="flaw-card">
+                <span className="flaw-badge flaw-flags">Chat Red Flags</span>
+                {redFlags.map((f) => (
+                  <div className="flaw-item" key={f.title}><strong>{f.title}</strong><p>{f.detail}</p></div>
                 ))}
               </div>
             </div>
-          </article>
+          </div>
         )}
 
-        {/* Slide 5: Red Flags */}
+        {/* Slide 5: Insights & Memorable Moment */}
         {slide === 5 && (
-          <article className="result-slide">
-            <span className="eyebrow">Caution</span>
-            <h2>Relationship Red Flags</h2>
-            <div className="insights-list">
-              {(result.badSide?.relationshipRedFlags || []).map((rf, i) => (
-                <div key={i} className="insight-card redflag-card">
-                  <h3>🚩 {rf.title}</h3>
-                  <p>{rf.detail}</p>
-                </div>
+          <div className="chapter-magic">
+            <p className="wrapped-kicker">Things hiding in plain sight</p>
+            <h2>The little patterns<br /><em>that define your chat.</em></h2>
+            <div className="magic-stack">
+              {result.insights.map((insight, index) => (
+                <article key={insight.title}>
+                  <span>0{index + 1}</span>
+                  <div><strong>{insight.title}</strong><p>{insight.detail}</p></div>
+                </article>
               ))}
             </div>
-          </article>
+            {result.memorableMoment && <blockquote>“{result.memorableMoment}”</blockquote>}
+          </div>
         )}
 
-        {/* Slide 6: Advice */}
+        {/* Slide 6: Timeline */}
         {slide === 6 && (
-          <article className="result-slide">
-            <span className="eyebrow">Unvarnished Advice</span>
-            <h2>Reality Check</h2>
-            <p className="summary">{result.advice?.realityCheck}</p>
-            <div className="verdict-box">
-              <small>THE VERDICT</small>
-              <strong>{result.advice?.verdict}</strong>
+          <div className="chapter-timeline">
+            <p className="wrapped-kicker">Your story so far</p>
+            <h2>A timeline made<br /><em>from your messages.</em></h2>
+            <div className="timeline-list">
+              {result.milestones.map((milestone) => (
+                <article key={`${milestone.title}-${milestone.when}`}>
+                  <span>{milestone.emoji}</span>
+                  <div><small>{milestone.when}</small><strong>{milestone.title}</strong><p>{milestone.detail}</p></div>
+                </article>
+              ))}
             </div>
-          </article>
+          </div>
         )}
 
-        {/* Slide 7: CTA */}
+        {/* Slide 7: Brutally Honest Advice */}
         {slide === 7 && (
-          <article className="result-slide cta-slide">
-            <span className="eyebrow">Unfiltered AI</span>
-            <h2>Discover the story inside your chats</h2>
-            <p>Export your WhatsApp conversation and turn everyday messages into your own relationship Wrapped.</p>
-            <Link className="button button-primary" href="/insights">Create your own Wrapped →</Link>
-          </article>
+          <div className="chapter-advice">
+            <p className="wrapped-kicker">The Reality Check</p>
+            <h2>Where you go from here.<br /><em>Unvarnished advice.</em></h2>
+            <div className="advice-grid">
+              <div className="reality-card">
+                <small>Reality Check</small>
+                <p>{adviceData.realityCheck}</p>
+                <div className="verdict-tag"><span>Verdict</span><strong>{adviceData.verdict}</strong></div>
+              </div>
+              <div className="advice-column">
+                <span className="advice-header">Direct Advice for {viewerName || "You"}</span>
+                <ul>{adviceData.adviceForYou.map((item, i) => <li key={i}>{item}</li>)}</ul>
+              </div>
+              <div className="advice-column">
+                <span className="advice-header advice-them">Direct Advice for {personName || "Them"}</span>
+                <ul>{adviceData.adviceForThem.map((item, i) => <li key={i}>{item}</li>)}</ul>
+              </div>
+            </div>
+          </div>
         )}
 
-        <div className="slide-nav">
-          <button className="button button-secondary" disabled={slide === 0} onClick={() => setSlide((s) => s - 1)}>← Previous</button>
-          <span>{slide + 1} / {totalSlides}</span>
-          <button className="button button-primary" disabled={slide === totalSlides - 1} onClick={() => setSlide((s) => s + 1)}>Next →</button>
-        </div>
+        {/* Slide 8: Finale */}
+        {slide === 8 && (
+          <div className="chapter-finale">
+            <div className="finale-card">
+              <span className="finale-mark">U</span>
+              <small>{connectionLabel} Wrapped · 2026</small>
+              <h2>{result.title}</h2>
+              <p>{viewerName} + {personName}</p>
+              <div>
+                <span>{result.messageCount.toLocaleString()} messages</span>
+                <span>Verdict: {adviceData.verdict}</span>
+                <span>{result.loveLanguage}</span>
+              </div>
+            </div>
+            <div className="finale-copy">
+              <p className="wrapped-kicker">That’s your story</p>
+              <h2>Some things deserve<br /><em>to be shared.</em></h2>
+              <p>14-day shareable links are stored safely for your connection.</p>
+              <button className="button button-light" onClick={shareReport}>
+                {copied ? "✓ 14-Day Share Link Copied!" : "Share our Wrapped (14 Days) ↗"}
+              </button>
+              <Link href="/insights">Analyse another chat</Link>
+            </div>
+          </div>
+        )}
       </section>
+
+      <footer className="wrapped-controls">
+        <button
+          className="wrapped-nav-btn wrapped-nav-prev"
+          disabled={slide === 0}
+          onClick={() => setSlide((current) => current - 1)}
+        >
+          <span>←</span> Previous
+        </button>
+        <div className="wrapped-counter-pill">
+          <span>{String(slide + 1).padStart(2, "0")} / {String(totalSlides).padStart(2, "0")}</span>
+        </div>
+        <button
+          className="wrapped-nav-btn wrapped-nav-next"
+          disabled={slide === totalSlides - 1}
+          onClick={() => setSlide((current) => current + 1)}
+        >
+          Next <span>→</span>
+        </button>
+      </footer>
     </main>
   );
 }

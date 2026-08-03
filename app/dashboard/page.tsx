@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { PaymentPlanModal } from "@/components/PaymentPlanModal";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
 
 type User = {
   id: string;
@@ -25,9 +24,20 @@ type Wrap = {
   createdAt: number;
 };
 
+type UserChatSummary = {
+  id: string;
+  intent: string;
+  status: string;
+  recipientName?: string | null;
+  senderToken: string;
+  createdAt: number;
+  initialMessage: string;
+};
+
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [wraps, setWraps] = useState<Wrap[]>([]);
+  const [userChats, setUserChats] = useState<UserChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
@@ -61,11 +71,14 @@ export default function DashboardPage() {
           }
           const wrapsRes = await fetch("/api/wraps");
           const wrapsData = (await wrapsRes.json()) as { wraps?: Wrap[]; credits?: number };
-          if (ignore) return;
-          if (wrapsData.wraps) setWraps(wrapsData.wraps);
-          if (typeof wrapsData.credits === "number") {
+          if (!ignore && wrapsData.wraps) setWraps(wrapsData.wraps);
+          if (!ignore && typeof wrapsData.credits === "number") {
             setUser((u) => (u ? { ...u, credits: wrapsData.credits! } : null));
           }
+
+          const msgsRes = await fetch("/api/user/messages");
+          const msgsData = (await msgsRes.json()) as { chats?: UserChatSummary[] };
+          if (!ignore && msgsData.chats) setUserChats(msgsData.chats);
         }
       } catch (err) {
         console.error("Dashboard load error:", err);
@@ -100,13 +113,13 @@ export default function DashboardPage() {
     setTimeout(() => setCopiedId(null), 2000);
   }
 
-  function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency?: string) {
+  function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency?: string, creditsCount?: number) {
     setIsPlanModalOpen(false);
     try {
       fetch("/api/payment/initialize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planType, email: guestEmail || user?.email, currency: currency || "NGN" }),
+        body: JSON.stringify({ planType, email: guestEmail || user?.email, currency: currency || "NGN", creditsCount }),
       })
         .then((res) => res.json() as Promise<{ authorizationUrl?: string; error?: string }>)
         .then((data) => {
@@ -155,7 +168,6 @@ export default function DashboardPage() {
     <main className="product-page dashboard-page">
       <Navbar
         user={user}
-        navTitle="My Dashboard"
         onOpenAuth={() => {}}
         onOpenProfile={() => setIsProfileOpen(true)}
       />
@@ -175,6 +187,35 @@ export default function DashboardPage() {
             <button className="button button-secondary" onClick={() => setIsPlanModalOpen(true)}>+ Buy Credits</button>
           </div>
         </header>
+
+        <h2>Your Anonymous Conversations</h2>
+        {userChats.length === 0 ? (
+          <div className="empty-dashboard" style={{ marginBottom: "40px" }}>
+            <p>You haven&apos;t sent or received any anonymous messages yet.</p>
+            <Link className="button button-primary" href="/message">Send Anonymous Message →</Link>
+          </div>
+        ) : (
+          <div className="wraps-list" style={{ marginBottom: "40px" }}>
+            {userChats.map((c) => (
+              <div key={c.id} className="wrap-item-card">
+                <div className="wrap-item-info">
+                  <h3>{c.recipientName || "Anonymous Message"}</h3>
+                  <div className="wrap-meta">
+                    <span className="sidebar-intent-tag">{c.intent}</span>
+                    <span>·</span>
+                    <span className={`status-pill status-${c.status}`}>{c.status}</span>
+                  </div>
+                  <p className="dashboard-card-desc">{c.initialMessage}</p>
+                </div>
+                <div className="wrap-item-actions">
+                  <Link className="button button-primary" href={`/message/room/${c.id}?token=${c.senderToken}`}>
+                    Open Chat Room →
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <h2>Your Saved Wraps</h2>
         {wraps.length === 0 ? (
@@ -224,8 +265,6 @@ export default function DashboardPage() {
         onUpdateUser={(updated) => setUser(updated)}
         onOpenBuyCredits={() => setIsPlanModalOpen(true)}
       />
-
-      <Footer />
     </main>
   );
 }

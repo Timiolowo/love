@@ -3,6 +3,15 @@ import { getDb } from "@/db";
 import { anonChats, anonMessages, users } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { generateShareId } from "@/lib/share";
+import {
+  getDevChat,
+  getDevMessages,
+  saveDevMessage,
+  updateDevChatStatus,
+  updateDevChatReveal,
+  AnonChatRecord,
+  AnonMessageRecord,
+} from "@/lib/anonStore";
 
 export async function GET(
   request: Request,
@@ -13,12 +22,47 @@ export async function GET(
     const url = new URL(request.url);
     const token = url.searchParams.get("token");
 
+    let chat: AnonChatRecord | null = null;
+    let messages: AnonMessageRecord[] = [];
     const db = getDb();
-    if (!db) {
-      return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
+
+    if (db) {
+      try {
+        const [d1Chat] = await db.select().from(anonChats).where(eq(anonChats.id, id)).limit(1);
+        if (d1Chat) {
+          chat = {
+            id: d1Chat.id,
+            senderId: d1Chat.senderId,
+            recipientPhone: d1Chat.recipientPhone,
+            intent: d1Chat.intent,
+            initialMessage: d1Chat.initialMessage,
+            status: d1Chat.status as "pending" | "accepted" | "declined",
+            senderRevealed: d1Chat.senderRevealed,
+            recipientRevealed: d1Chat.recipientRevealed,
+            senderToken: d1Chat.senderToken,
+            recipientToken: d1Chat.recipientToken,
+            createdAt: d1Chat.createdAt,
+            expiresAt: d1Chat.expiresAt,
+          };
+          const d1Msgs = await db.select()
+            .from(anonMessages)
+            .where(eq(anonMessages.chatId, id))
+            .orderBy(asc(anonMessages.createdAt));
+          messages = d1Msgs as AnonMessageRecord[];
+        }
+      } catch (e) {
+        console.warn("D1 chat read warning:", e);
+      }
     }
 
-    const [chat] = await db.select().from(anonChats).where(eq(anonChats.id, id)).limit(1);
+    // Fallback to dev store if not in D1
+    if (!chat) {
+      const devChat = getDevChat(id);
+      if (devChat) {
+        chat = devChat;
+        messages = getDevMessages(id);
+      }
+    }
 
     if (!chat) {
       return NextResponse.json({ error: "Anonymous message room not found." }, { status: 404 });
@@ -34,19 +78,21 @@ export async function GET(
     const role = isSender ? "sender" : "recipient";
     const isExpired = Date.now() > chat.expiresAt;
 
-    // Fetch messages
-    const messages = await db.select()
-      .from(anonMessages)
-      .where(eq(anonMessages.chatId, id))
-      .orderBy(asc(anonMessages.createdAt));
-
-    // Lookup sender email if mutually revealed
+    // Lookup sender email & name if mutually revealed
     let senderEmail: string | null = null;
+    let senderName: string | null = null;
     const bothRevealed = chat.senderRevealed === 1 && chat.recipientRevealed === 1;
 
-    if (bothRevealed && chat.senderId) {
-      const [sUser] = await db.select().from(users).where(eq(users.id, chat.senderId)).limit(1);
-      if (sUser) senderEmail = sUser.email;
+    if (bothRevealed && chat.senderId && db) {
+      try {
+        const [sUser] = await db.select().from(users).where(eq(users.id, chat.senderId)).limit(1);
+        if (sUser) {
+          senderEmail = sUser.email;
+          senderName = sUser.name || sUser.email.split("@")[0];
+        }
+      } catch {
+        /* ignore */
+      }
     }
 
     return NextResponse.json({
@@ -58,10 +104,16 @@ export async function GET(
         expiresAt: chat.expiresAt,
         isExpired,
         role,
+        recipientName: chat.recipientName || null,
+        initialMessageTeaser: chat.initialMessage
+          ? chat.initialMessage.slice(0, 45) + (chat.initialMessage.length > 45 ? "..." : "")
+          : null,
         myRevealed: isSender ? chat.senderRevealed === 1 : chat.recipientRevealed === 1,
         theirRevealed: isSender ? chat.recipientRevealed === 1 : chat.senderRevealed === 1,
         bothRevealed,
         senderEmail,
+        senderName,
+        disruptedAt: chat.disruptedAt || null,
       },
       messages,
     });
@@ -86,12 +138,36 @@ export async function POST(
     const token = body.token;
     const action = body.action;
 
+    let chat: AnonChatRecord | null = null;
     const db = getDb();
-    if (!db) {
-      return NextResponse.json({ error: "Database unavailable." }, { status: 503 });
+
+    if (db) {
+      try {
+        const [d1Chat] = await db.select().from(anonChats).where(eq(anonChats.id, id)).limit(1);
+        if (d1Chat) {
+          chat = {
+            id: d1Chat.id,
+            senderId: d1Chat.senderId,
+            recipientPhone: d1Chat.recipientPhone,
+            intent: d1Chat.intent,
+            initialMessage: d1Chat.initialMessage,
+            status: d1Chat.status as "pending" | "accepted" | "declined",
+            senderRevealed: d1Chat.senderRevealed,
+            recipientRevealed: d1Chat.recipientRevealed,
+            senderToken: d1Chat.senderToken,
+            recipientToken: d1Chat.recipientToken,
+            createdAt: d1Chat.createdAt,
+            expiresAt: d1Chat.expiresAt,
+          };
+        }
+      } catch {
+        /* ignore */
+      }
     }
 
-    const [chat] = await db.select().from(anonChats).where(eq(anonChats.id, id)).limit(1);
+    if (!chat) {
+      chat = getDevChat(id) || null;
+    }
 
     if (!chat) {
       return NextResponse.json({ error: "Chat room not found." }, { status: 404 });
@@ -106,14 +182,44 @@ export async function POST(
 
     const role = isSender ? "sender" : "recipient";
 
-    if (action === "accept") {
-      await db.update(anonChats).set({ status: "accepted" }).where(eq(anonChats.id, id));
-      return NextResponse.json({ success: true, status: "accepted" });
+    if (action === "accept" || action === "decline") {
+      const newStatus = action === "accept" ? "accepted" : "declined";
+      updateDevChatStatus(id, newStatus);
+      if (db) {
+        try {
+          await db.update(anonChats).set({ status: newStatus }).where(eq(anonChats.id, id));
+        } catch (e) {
+          console.warn("DB update error:", e);
+        }
+      }
+      return NextResponse.json({ success: true, status: newStatus });
     }
 
-    if (action === "decline") {
-      await db.update(anonChats).set({ status: "declined" }).where(eq(anonChats.id, id));
-      return NextResponse.json({ success: true, status: "declined" });
+    if (action === "disrupt") {
+      if (!isSender) {
+        return NextResponse.json({ error: "Only the sender can disrupt this conversation." }, { status: 403 });
+      }
+
+      const now = Date.now();
+      updateDevChatStatus(id, "disrupted", now);
+      const systemMsgRecord = {
+        id: `am_${generateShareId(12)}`,
+        chatId: id,
+        senderRole: "system" as const,
+        text: "🛑 System Notice: The sender has disrupted and ended this conversation. This chat room will close in 15 seconds.",
+        createdAt: now,
+      };
+      saveDevMessage(systemMsgRecord);
+
+      if (db) {
+        try {
+          await db.update(anonChats).set({ status: "disrupted", disruptedAt: now }).where(eq(anonChats.id, id));
+          await db.insert(anonMessages).values(systemMsgRecord);
+        } catch (e) {
+          console.warn("DB disrupt update error:", e);
+        }
+      }
+      return NextResponse.json({ success: true, status: "disrupted", disruptedAt: now });
     }
 
     if (action === "reply") {
@@ -124,26 +230,43 @@ export async function POST(
         return NextResponse.json({ error: "Cannot send reply until recipient accepts the message." }, { status: 400 });
       }
 
-      await db.insert(anonMessages).values({
+      const msgRecord = {
         id: `am_${generateShareId(12)}`,
         chatId: id,
-        senderRole: role,
+        senderRole: role as "sender" | "recipient",
         text,
         createdAt: Date.now(),
-      });
+      };
+
+      saveDevMessage(msgRecord);
+
+      if (db) {
+        try {
+          await db.insert(anonMessages).values(msgRecord);
+        } catch (e) {
+          console.warn("DB msg insert error:", e);
+        }
+      }
 
       return NextResponse.json({ success: true });
     }
 
     if (action === "reveal") {
-      if (isSender) {
-        await db.update(anonChats).set({ senderRevealed: 1 }).where(eq(anonChats.id, id));
-      } else {
-        await db.update(anonChats).set({ recipientRevealed: 1 }).where(eq(anonChats.id, id));
+      updateDevChatReveal(id, role);
+      if (db) {
+        try {
+          if (isSender) {
+            await db.update(anonChats).set({ senderRevealed: 1 }).where(eq(anonChats.id, id));
+          } else {
+            await db.update(anonChats).set({ recipientRevealed: 1 }).where(eq(anonChats.id, id));
+          }
+        } catch (e) {
+          console.warn("DB reveal update error:", e);
+        }
       }
 
-      const [updated] = await db.select().from(anonChats).where(eq(anonChats.id, id)).limit(1);
-      const bothRevealed = updated.senderRevealed === 1 && updated.recipientRevealed === 1;
+      const updatedChat = getDevChat(id) || chat;
+      const bothRevealed = updatedChat.senderRevealed === 1 && updatedChat.recipientRevealed === 1;
 
       return NextResponse.json({ success: true, bothRevealed });
     }

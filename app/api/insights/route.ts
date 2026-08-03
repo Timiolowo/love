@@ -442,8 +442,11 @@ export async function POST(request: Request) {
 
     const user = await getCurrentUser(request);
 
-    // If user is authenticated, check credits
-    if (user && user.credits > 0) {
+    // If user is authenticated, enforce and deduct credits
+    if (user) {
+      if (user.credits <= 0) {
+        return NextResponse.json({ error: "You have 0 credits remaining. Please purchase credits to generate a Wrapped." }, { status: 402 });
+      }
       try {
         const db = getDb();
         if (db) {

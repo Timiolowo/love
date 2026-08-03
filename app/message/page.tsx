@@ -163,13 +163,13 @@ export default function MessagePage() {
     }
   }
 
-  async function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency: string = "NGN") {
+  async function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency: string = "NGN", creditsCount?: number) {
     setIsPlanModalOpen(false);
     try {
       const res = await fetch("/api/payment/initialize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planType, currency, email: guestEmail || user?.email }),
+        body: JSON.stringify({ planType, currency, email: guestEmail || user?.email, userId: user?.id, creditsCount }),
       });
       const data = (await res.json()) as { authorizationUrl?: string; error?: string };
       if (data.authorizationUrl) {
@@ -202,6 +202,13 @@ export default function MessagePage() {
           <p className="eyebrow"><span /> Private conversations, gently begun</p>
           <h1>Say what matters.<br /><em>Stay private.</em></h1>
           <p>The recipient chooses whether to open your message. Your identity remains protected until you both agree to reveal it.</p>
+          {user && (
+            <div style={{ marginTop: "1.25rem", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              <Link href="/dashboard" className="button button-secondary button-sm">
+                💬 Open Your Messages &amp; Conversations →
+              </Link>
+            </div>
+          )}
         </div>
 
         <div className="message-invite-preview">

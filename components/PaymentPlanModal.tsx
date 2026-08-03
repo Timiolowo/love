@@ -4,6 +4,14 @@ import { useState } from "react";
 
 type Currency = "NGN" | "USD" | "GHS" | "KES" | "ZAR";
 
+const unitPrices: Record<Currency, { unit: number; symbol: string; prefix: string; suffix: string }> = {
+  NGN: { unit: 500, symbol: "₦", prefix: "₦", suffix: "" },
+  USD: { unit: 1.0, symbol: "$", prefix: "$", suffix: "" },
+  GHS: { unit: 10, symbol: "GH₵", prefix: "GH₵ ", suffix: "" },
+  KES: { unit: 100, symbol: "KSh", prefix: "KSh ", suffix: "" },
+  ZAR: { unit: 13.33, symbol: "R", prefix: "R ", suffix: "" },
+};
+
 const pricingMap: Record<Currency, { guest: string; bundle: string; sub: string }> = {
   NGN: { guest: "₦800", bundle: "₦1,500", sub: "₦500 each" },
   USD: { guest: "$1.50", bundle: "$3.00", sub: "$1.00 each" },
@@ -21,12 +29,13 @@ export function PaymentPlanModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSelectPlan: (planType: "guest_single" | "account_bundle", guestEmail?: string, currency?: Currency) => void;
+  onSelectPlan: (planType: "guest_single" | "account_bundle", guestEmail?: string, currency?: Currency, creditsCount?: number) => void;
   userEmail?: string;
   onOpenAuth?: () => void;
 }) {
   const [step, setStep] = useState<1 | 2>(userEmail ? 2 : 1);
   const [currency, setCurrency] = useState<Currency>("NGN");
+  const [selectedCredits, setSelectedCredits] = useState<number>(3);
   const [emailInput, setEmailInput] = useState("");
   const [error, setError] = useState("");
 
@@ -48,21 +57,32 @@ export function PaymentPlanModal({
   }
 
   function handleChooseGuest() {
-    onSelectPlan("guest_single", userEmail || emailInput.trim(), currency);
+    onSelectPlan("guest_single", userEmail || emailInput.trim(), currency, 1);
   }
 
-  function handleChooseBundle() {
+  function handleChooseBundle(count?: number) {
     const activeEmail = userEmail || emailInput.trim();
     if (!activeEmail || !activeEmail.includes("@")) {
       setError("Please enter a valid email address to attach your bundle.");
       setStep(1);
       return;
     }
-    onSelectPlan("account_bundle", activeEmail, currency);
+    onSelectPlan("account_bundle", activeEmail, currency, count || selectedCredits);
   }
 
   const prices = pricingMap[currency];
+  const unitInfo = unitPrices[currency];
   const activeEmail = userEmail || emailInput.trim();
+
+  function formatTotalPrice(count: number): string {
+    const total = unitInfo.unit * count;
+    if (currency === "USD" || currency === "ZAR") {
+      return `${unitInfo.prefix}${total.toFixed(2)}${unitInfo.suffix}`;
+    }
+    return `${unitInfo.prefix}${Math.round(total).toLocaleString()}${unitInfo.suffix}`;
+  }
+
+  const isAuthUser = !!userEmail;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -70,8 +90,8 @@ export function PaymentPlanModal({
         <button className="modal-close" onClick={onClose}>×</button>
         <span className="wordmark-seal">U</span>
 
-        {step === 1 ? (
-          /* STEP 1: Account / Email & Free Trial */
+        {step === 1 && !isAuthUser ? (
+          /* STEP 1: Account / Email & Free Trial (For Guests) */
           <div className="modal-step-container">
             <h2>Unlock your Wrapped</h2>
             <p className="step-subtitle">Choose how you would like to proceed</p>
@@ -109,8 +129,7 @@ export function PaymentPlanModal({
                     <input
                       type="email"
                       placeholder="you@example.com"
-                      value={userEmail || emailInput}
-                      disabled={!!userEmail}
+                      value={emailInput}
                       onChange={(e) => {
                         setEmailInput(e.target.value);
                         setError("");
@@ -132,11 +151,18 @@ export function PaymentPlanModal({
         ) : (
           /* STEP 2: Choose Payment Plan & Pay */
           <div className="modal-step-container">
-            <button type="button" className="quiet-button back-step-btn" onClick={() => setStep(1)}>
-              ← Back to email / account
-            </button>
-            <h2>Choose your payment plan</h2>
-            <p>Select your currency and preferred plan for <strong>{activeEmail}</strong></p>
+            {!isAuthUser && (
+              <button type="button" className="quiet-button back-step-btn" onClick={() => setStep(1)}>
+                ← Back to email / account
+              </button>
+            )}
+
+            <h2>{isAuthUser ? "Buy Wrap Credits" : "Choose your payment plan"}</h2>
+            <p>
+              {isAuthUser
+                ? `Purchasing credits for ${activeEmail}`
+                : `Select your currency and preferred plan for ${activeEmail}`}
+            </p>
 
             <div className="currency-selector">
               <label>Select Currency</label>
@@ -156,44 +182,93 @@ export function PaymentPlanModal({
 
             {error && <div className="form-error">{error}</div>}
 
-            <div className="plan-grid">
-              <div className="plan-card guest-plan" onClick={handleChooseGuest}>
-                <div className="plan-header">
-                  <h3>Guest Pass</h3>
-                  <div className="plan-price">{prices.guest} <span>/ single wrap</span></div>
-                </div>
-                <ul className="plan-features">
-                  <li>✓ Instant 1-time chat analysis</li>
-                  <li>✓ View results directly in browser</li>
-                  <li>✕ No dashboard storage</li>
-                  <li>✕ Cannot share link immediately</li>
-                </ul>
-                <button className="button button-secondary button-full">Pay {prices.guest} as Guest</button>
-              </div>
+            {isAuthUser ? (
+              /* Authenticated User Flow: Compact Dynamic Credit Quantity Selector (Min 3) */
+              <div className="auth-credits-plan-wrapper">
+                <div className="plan-card bundle-plan featured-plan auth-credits-card">
+                  <div className="auth-card-top-row">
+                    <div>
+                      <h3>Select Credits</h3>
+                      <p className="min-credits-note">Minimum purchase is 3 credits</p>
+                    </div>
+                    <span className="compact-price-tag">{prices.sub}</span>
+                  </div>
 
-              <div className="plan-card bundle-plan featured-plan" onClick={handleChooseBundle}>
-                <div className="plan-badge">BEST VALUE</div>
-                <div className="plan-header">
-                  <h3>3-Wrap Bundle</h3>
-                  <div className="plan-price">{prices.bundle} <span>for 3 wraps ({prices.sub})</span></div>
-                </div>
-                <ul className="plan-features">
-                  <li>✓ 3 full Wrapped analysis credits</li>
-                  <li>✓ Save & manage in your Dashboard</li>
-                  <li>✓ 14-day shareable links for friends</li>
-                  <li>✓ Delete or disable links anytime</li>
-                </ul>
-                <button className="button button-primary button-full">Unlock 3 Wraps for {prices.bundle}</button>
-              </div>
-            </div>
+                  {/* Quantity Controls Row */}
+                  <div className="compact-controls-row">
+                    <span className="stepper-label">Number of Credits:</span>
+                    <div className="stepper-box">
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => setSelectedCredits((prev) => Math.max(3, prev - 1))}
+                        disabled={selectedCredits <= 3}
+                      >
+                        -
+                      </button>
+                      <span className="stepper-value">{selectedCredits}</span>
+                      <button
+                        type="button"
+                        className="stepper-btn"
+                        onClick={() => setSelectedCredits((prev) => prev + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
 
-            <div className="privacy-guarantee-banner">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <div>
-                <strong>100% Privacy Guarantee</strong>
-                <p>Your chat export is analyzed strictly in memory to generate your Wrapped. Your raw chat messages are <strong>never stored, saved on disk, or shared with anyone</strong>.</p>
+                  {/* Compact Price Summary */}
+                  <div className="compact-price-summary">
+                    <div className="summary-total-price">
+                      {formatTotalPrice(selectedCredits)}
+                    </div>
+                    <span className="summary-subtext">
+                      for {selectedCredits} Wrap Credits ({formatTotalPrice(1)} each)
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="button button-primary button-full unlock-credits-btn"
+                    onClick={() => handleChooseBundle(selectedCredits)}
+                  >
+                    Unlock {selectedCredits} Credits for {formatTotalPrice(selectedCredits)}
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Unauthenticated Guest Flow: Guest Pass vs 3-Wrap Bundle */
+              <div className="plan-grid">
+                <div className="plan-card guest-plan" onClick={handleChooseGuest}>
+                  <div className="plan-header">
+                    <h3>Guest Pass</h3>
+                    <div className="plan-price">{prices.guest} <span>/ single wrap</span></div>
+                  </div>
+                  <ul className="plan-features">
+                    <li>✓ Instant 1-time chat analysis</li>
+                    <li>✓ View results directly in browser</li>
+                    <li>✕ No dashboard storage</li>
+                    <li>✕ Cannot share link immediately</li>
+                  </ul>
+                  <button className="button button-secondary button-full">Pay {prices.guest} as Guest</button>
+                </div>
+
+                <div className="plan-card bundle-plan featured-plan" onClick={() => handleChooseBundle(3)}>
+                  <div className="plan-badge">BEST VALUE</div>
+                  <div className="plan-header">
+                    <h3>3-Wrap Bundle</h3>
+                    <div className="plan-price">{prices.bundle} <span>for 3 wraps ({prices.sub})</span></div>
+                  </div>
+                  <ul className="plan-features">
+                    <li>✓ 3 full Wrapped analysis credits</li>
+                    <li>✓ Save & manage in your Dashboard</li>
+                    <li>✓ 14-day shareable links for friends</li>
+                    <li>✓ Delete or disable links anytime</li>
+                  </ul>
+                  <button className="button button-primary button-full">Unlock 3 Wraps for {prices.bundle}</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

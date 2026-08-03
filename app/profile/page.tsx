@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
 import { AuthModal } from "@/components/AuthModal";
 import { PaymentPlanModal } from "@/components/PaymentPlanModal";
 import { WelcomeGiftModal } from "@/components/WelcomeGiftModal";
+import { PaymentSuccessModal } from "@/components/PaymentSuccessModal";
 
 type User = {
   id: string;
@@ -23,6 +23,8 @@ function ProfileContent() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
   const [isGiftOpen, setIsGiftOpen] = useState(false);
+  const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [creditsAdded, setCreditsAdded] = useState(3);
 
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -64,6 +66,54 @@ function ProfileContent() {
 
     if (searchParams.get("welcome") === "true") {
       setIsGiftOpen(true);
+    }
+
+    if (searchParams.get("payment") === "success") {
+      const added = Number(searchParams.get("added")) || 3;
+      setCreditsAdded(added);
+      setIsSuccessModalOpen(true);
+      const successMsg = `✦ Payment Successful! ${added} Wrap Credits have been added to your account.`;
+      setMessage(successMsg);
+
+      // Optimistically update localStorage & state
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("unsaid_user");
+        let currentCredits = 0;
+        let parsed: Partial<User> = {};
+        if (stored) {
+          try {
+            parsed = JSON.parse(stored);
+            currentCredits = parsed.credits || 0;
+          } catch {
+            /* ignore */
+          }
+        }
+        const updatedCredits = currentCredits + added;
+        const updatedUser = { ...parsed, id: parsed.id || `usr_${Date.now()}`, email: parsed.email || "", credits: updatedCredits } as User;
+        setUser(updatedUser);
+        localStorage.setItem("unsaid_user", JSON.stringify(updatedUser));
+
+        // Sync with server DB without downgrading local credits
+        fetch("/api/auth/me")
+          .then((res) => res.json() as Promise<{ user?: User }>)
+          .then((data) => {
+            if (data.user) {
+              const maxCredits = Math.max(data.user.credits || 0, updatedCredits);
+              const syncedUser = { ...data.user, credits: maxCredits };
+              setUser(syncedUser);
+            }
+          })
+          .catch(() => {});
+      }
+    }
+
+    const errParam = searchParams.get("error");
+    if (errParam) {
+      if (errParam.includes("abandoned")) {
+        setMessage("Payment was cancelled or abandoned before completion.");
+      } else {
+        setMessage("Payment verification failed or was not completed. Please try again.");
+      }
     }
   }, [searchParams]);
 
@@ -108,13 +158,28 @@ function ProfileContent() {
     }
   }
 
-  function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency?: string) {
+  async function handleDeleteAccount() {
+    if (!confirm("Are you sure you want to delete your account? This will permanently delete your account profile.")) {
+      return;
+    }
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("unsaid_user");
+    }
+    try {
+      await fetch("/api/user/delete", { method: "DELETE" });
+      window.location.href = "/";
+    } catch {
+      window.location.href = "/";
+    }
+  }
+
+  function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency?: string, creditsCount?: number) {
     setIsPlanModalOpen(false);
     try {
       fetch("/api/payment/initialize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planType, email: guestEmail || user?.email, currency: currency || "NGN" }),
+        body: JSON.stringify({ planType, email: guestEmail || user?.email, userId: user?.id, currency: currency || "NGN", creditsCount }),
       })
         .then((res) => res.json() as Promise<{ authorizationUrl?: string; error?: string }>)
         .then((data) => {
@@ -140,10 +205,17 @@ function ProfileContent() {
         onOpenProfile={() => {}}
       />
 
+      {message && (
+        <div className="global-profile-alert-banner">
+          <div className="alert-banner-content">
+            <span className="banner-icon">✦</span>
+            <span>{message}</span>
+            <button type="button" onClick={() => setMessage(null)} className="banner-close-btn">×</button>
+          </div>
+        </div>
+      )}
+
       <section className="profile-hero">
-        <Link className="back-link" href="/dashboard">
-          ← Back to Dashboard
-        </Link>
         <div className="profile-header-meta">
           <div className="profile-avatar-circle">{firstName.charAt(0).toUpperCase()}</div>
           <div>
@@ -151,22 +223,26 @@ function ProfileContent() {
               <span /> Your Account
             </p>
             <h1>
-              Welcome back, <br />
-              <em>{firstName}.</em>
+              Welcome back, <em>{firstName}.</em>
             </h1>
             {user && (
-              <div className="profile-hero-credits-bar" style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                <span className="pill-badge" style={{ background: "rgba(246, 155, 192, 0.15)", color: "#f69bc0", border: "1px solid rgba(246, 155, 192, 0.3)", padding: "6px 14px", borderRadius: "100px", fontSize: "14px", fontWeight: "600" }}>
-                  ✦ {user.credits} {user.credits === 1 ? "Credit" : "Credits"} Available
+              <div className="profile-hero-credits-bar">
+                <span className="pill-badge credits-badge">
+                  ✦ {user.credits} {user.credits === 1 ? "Credit" : "Credits"}
                 </span>
                 <button
                   type="button"
                   className="button button-primary button-sm"
                   onClick={() => setIsPlanModalOpen(true)}
-                  style={{ height: "36px", padding: "0 16px", fontSize: "13px" }}
                 >
                   + Add Credits
                 </button>
+                <Link
+                  href="/dashboard"
+                  className="button button-secondary button-sm profile-dashboard-nav-btn"
+                >
+                  📁 Go to Dashboard →
+                </Link>
               </div>
             )}
           </div>
@@ -253,13 +329,22 @@ function ProfileContent() {
             <div className="profile-card danger-profile-card">
               <h2>Session & Security</h2>
               <p>Your session is protected over TLS with secure HTTP-only cookies.</p>
-              <button
-                type="button"
-                className="button button-secondary logout-btn"
-                onClick={handleLogout}
-              >
-                Sign Out of Account
-              </button>
+              <div className="profile-danger-actions">
+                <button
+                  type="button"
+                  className="button button-secondary logout-btn"
+                  onClick={handleLogout}
+                >
+                  Sign Out of Account
+                </button>
+                <button
+                  type="button"
+                  className="quiet-button delete-account-btn"
+                  onClick={handleDeleteAccount}
+                >
+                  Delete Account
+                </button>
+              </div>
             </div>
           </>
         )}
@@ -283,7 +368,11 @@ function ProfileContent() {
         onClose={() => setIsGiftOpen(false)}
       />
 
-      <Footer />
+      <PaymentSuccessModal
+        isOpen={isSuccessModalOpen}
+        onClose={() => setIsSuccessModalOpen(false)}
+        creditsAdded={creditsAdded}
+      />
     </main>
   );
 }

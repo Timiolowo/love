@@ -54,21 +54,29 @@ type StoredReport = {
 const totalSlides = 9;
 
 export default function InsightsResultPage() {
-  const [report] = useState<StoredReport | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = window.sessionStorage.getItem("unsaid-insights-report");
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored) as StoredReport;
-    } catch {
-      window.sessionStorage.removeItem("unsaid-insights-report");
-      return null;
-    }
-  });
+  const [mounted, setMounted] = useState(false);
+  const [report, setReport] = useState<StoredReport | null>(null);
   const [slide, setSlide] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  function handleClaimSuccess() {
+    setIsAuthOpen(false);
+  }
 
   useEffect(() => {
+    setMounted(true);
+    if (typeof window !== "undefined") {
+      const stored = window.sessionStorage.getItem("unsaid-insights-report");
+      if (stored) {
+        try {
+          setReport(JSON.parse(stored) as StoredReport);
+        } catch {
+          window.sessionStorage.removeItem("unsaid-insights-report");
+        }
+      }
+    }
+
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "ArrowRight") setSlide((current) => Math.min(totalSlides - 1, current + 1));
       if (event.key === "ArrowLeft") setSlide((current) => Math.max(0, current - 1));
@@ -77,8 +85,24 @@ export default function InsightsResultPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  if (!mounted) {
+    return (
+      <main className="empty-report">
+        <span className="wordmark-seal">U</span>
+        <p>Loading your Wrapped report...</p>
+      </main>
+    );
+  }
+
   if (!report) {
-    return <main className="empty-report"><span className="wordmark-seal">U</span><h1>Your Wrapped is waiting to be made.</h1><p>Upload a WhatsApp export first, then your private report will appear here.</p><Link className="button button-primary" href="/insights">Create my Wrapped</Link></main>;
+    return (
+      <main className="empty-report">
+        <span className="wordmark-seal">U</span>
+        <h1>Your Wrapped is waiting to be made.</h1>
+        <p>Upload a WhatsApp export first, then your private report will appear here.</p>
+        <Link className="button button-primary" href="/insights">Create my Wrapped</Link>
+      </main>
+    );
   }
 
   const { result, personName, viewerName, connectionLabel, shareId, isGuest } = report;
@@ -169,7 +193,7 @@ export default function InsightsResultPage() {
   }
 
   return (
-    <main className="product-page wrapped-result-page">
+    <main className={`product-page wrapped-report-page wrapped-slide-${slide}`}>
       <header className="wrapped-report-nav"><Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unfiltered</span></Link><span>{connectionLabel} Wrapped</span><Link href="/insights">Close</Link></header>
       <div className="wrapped-progress" aria-label={`Chapter ${slide + 1} of ${totalSlides}`}>{Array.from({ length: totalSlides }, (_, index) => <button key={index} aria-label={`Go to chapter ${index + 1}`} className={index <= slide ? "is-active" : ""} onClick={() => setSlide(index)} />)}</div>
 
