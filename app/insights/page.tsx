@@ -3,6 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AuthModal } from "@/components/AuthModal";
+import { PaymentPlanModal } from "@/components/PaymentPlanModal";
+import { UserProfileModal } from "@/components/UserProfileModal";
+import { Navbar } from "@/components/Navbar";
+
+type User = {
+  id: string;
+  email: string;
+  name?: string | null;
+  credits: number;
+};
 
 type InsightsResult = {
   title: string;
@@ -78,7 +89,6 @@ async function detectParticipants(file: File): Promise<{ detected: string[]; def
     } catch { /* ignore */ }
   }
 
-  // Strip invisible LTR/RTL Unicode control characters often inserted by WhatsApp export
   const cleanText = text.replace(/[\u200e\u200f\u202a-\u202e\u200b\uFEFF]/g, "");
   const sendersMap = new Map<string, number>();
   const lines = cleanText.split(/\r?\n/).slice(0, 1200);
@@ -129,7 +139,22 @@ export default function InsightsPage() {
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [processingStage, setProcessingStage] = useState(0);
   const [error, setError] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const connectionLabel = connectionType === "Other" ? customConnection.trim() : connectionType;
+
+  useEffect(() => {
+    async function checkUser() {
+      try {
+        const res = await fetch("/api/auth/me");
+        const data = await res.json() as { user?: User };
+        if (data.user) setUser(data.user);
+      } catch { /* ignore */ }
+    }
+    checkUser();
+  }, []);
 
   useEffect(() => {
     if (step !== "processing") return;
@@ -159,7 +184,7 @@ export default function InsightsPage() {
     }
   }
 
-  async function analyseChat() {
+  async function startAnalysisExecution() {
     if (!file || !connectionLabel || !consent) return;
     setIsAnalysing(true);
     setProcessingStage(0);
@@ -178,9 +203,17 @@ export default function InsightsPage() {
         fetch("/api/insights", { method: "POST", body: form }),
         new Promise((resolve) => window.setTimeout(resolve, 2600)),
       ]);
-      const payload = await response.json() as { result?: InsightsResult; error?: string };
+      const payload = await response.json() as { result?: InsightsResult; shareId?: string; isGuest?: boolean; error?: string };
       if (!response.ok || !payload.result) throw new Error(payload.error || "Analysis failed.");
-      window.sessionStorage.setItem("unsaid-insights-report", JSON.stringify({ result: payload.result, personName: personName.trim(), viewerName: viewerName.trim(), connectionLabel, createdAt: Date.now() }));
+      window.sessionStorage.setItem("unsaid-insights-report", JSON.stringify({
+        result: payload.result,
+        personName: personName.trim(),
+        viewerName: viewerName.trim(),
+        connectionLabel,
+        shareId: payload.shareId,
+        isGuest: payload.isGuest,
+        createdAt: Date.now()
+      }));
       router.push("/insights/result");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Analysis failed.");
@@ -190,9 +223,42 @@ export default function InsightsPage() {
     }
   }
 
+  function handleCreateClick() {
+    if (!file || !connectionLabel || !consent) return;
+    if (user && user.credits > 0) {
+      startAnalysisExecution();
+    } else {
+      setIsPlanModalOpen(true);
+    }
+  }
+
+  async function handleSelectPlan(planType: "guest_single" | "account_bundle", guestEmail?: string, currency: string = "NGN") {
+    setIsPlanModalOpen(false);
+    try {
+      const res = await fetch("/api/payment/initialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planType, currency, email: guestEmail || user?.email }),
+      });
+      const data = await res.json() as { authorizationUrl?: string; error?: string };
+      if (data.authorizationUrl) {
+        window.location.href = data.authorizationUrl;
+      } else {
+        setError(data.error || "Payment initialization failed.");
+      }
+    } catch {
+      setError("Payment initialization failed.");
+    }
+  }
+
   return (
     <main className="product-page insights-page">
-      <nav className="site-nav product-nav"><Link className="wordmark" href="/"><span className="wordmark-seal">U</span><span>Unsaid</span></Link><span className="product-nav-title">Chat Insights</span><Link className="nav-action" href="/message">Private Message</Link></nav>
+      <Navbar
+        user={user}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
+      />
+
       <section className="product-hero">
         <div className="product-intro"><Link className="back-link" href="/">← Back home</Link><p className="eyebrow"><span /> Your conversation, beautifully understood</p><h1>Your chats have<br /><em>a story.</em></h1><p>Upload an exported WhatsApp conversation and turn everyday messages into a thoughtful, shareable relationship Wrapped.</p><div className="product-trust"><span>Server-side Unsaid AI</span><span>Identifiers redacted</span><span>Not stored by Unsaid</span></div></div>
         <div className="wrapped-teaser" aria-hidden="true"><div className="teaser-card teaser-back"><span>11:42 PM</span><small>Your favourite time to gist</small></div><div className="teaser-card teaser-front"><small>Messages exchanged</small><strong>18,642</strong><span>Friendship Wrapped</span></div></div>
@@ -235,7 +301,7 @@ export default function InsightsPage() {
           {connectionType === "Other" && <label>Describe the connection<input className="text-field" value={customConnection} onChange={(event) => setCustomConnection(event.target.value)} placeholder="For example: mentor, roommate, childhood friend" maxLength={50} /></label>}
           <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I understand this chat will be analyzed with Unsaid AI using the actual participant names.</span></label>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <div className="question-actions"><button className="quiet-button" onClick={() => setStep("upload")}>← Back</button><button className="button button-primary" disabled={!file || !viewerName.trim() || !personName.trim() || !connectionLabel || !consent || isAnalysing} onClick={analyseChat}>Create our Wrapped <span>✦</span></button></div>
+          <div className="question-actions"><button className="quiet-button" onClick={() => setStep("upload")}>← Back</button><button className="button button-primary" disabled={!file || !viewerName.trim() || !personName.trim() || !connectionLabel || !consent || isAnalysing} onClick={handleCreateClick}>Create our Wrapped <span>✦</span></button></div>
         </div>}
 
         {step === "processing" && <div className="processing-card" aria-live="polite">
@@ -249,8 +315,34 @@ export default function InsightsPage() {
 
       </section>
 
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onSuccess={(u) => {
+          setUser(u);
+          if (u.credits > 0) startAnalysisExecution();
+        }}
+      />
+
+      <PaymentPlanModal
+        isOpen={isPlanModalOpen}
+        onClose={() => setIsPlanModalOpen(false)}
+        onSelectPlan={handleSelectPlan}
+        userEmail={user?.email}
+        onOpenAuth={() => setIsAuthOpen(true)}
+      />
+
+      <UserProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        user={user}
+        onUpdateUser={(updated) => setUser(updated)}
+        onOpenBuyCredits={() => setIsPlanModalOpen(true)}
+      />
+
       <section className="insight-preview-section"><p className="eyebrow"><span /> What you will discover</p><h2>More than numbers.<br />A portrait of the connection.</h2><div className="insight-preview-grid">{previewInsights.map((insight, index) => <article key={insight.title}><span>0{index + 1}</span><strong>{insight.title}</strong><p>{insight.detail}</p></article>)}</div></section>
       <footer><div><span className="wordmark-seal">U</span><strong>Unsaid</strong></div><Link href="/message">Need to start a conversation instead? →</Link><span>Private by design · Lagos, Nigeria</span></footer>
     </main>
   );
 }
+

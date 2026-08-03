@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { AuthModal } from "@/components/AuthModal";
+
 
 type InsightsResult = {
   title: string;
@@ -44,6 +46,8 @@ type StoredReport = {
   personName: string;
   viewerName: string;
   connectionLabel: string;
+  shareId?: string;
+  isGuest?: boolean;
   createdAt: number;
 };
 
@@ -77,7 +81,36 @@ export default function InsightsResultPage() {
     return <main className="empty-report"><span className="wordmark-seal">U</span><h1>Your Wrapped is waiting to be made.</h1><p>Upload a WhatsApp export first, then your private report will appear here.</p><Link className="button button-primary" href="/insights">Create my Wrapped</Link></main>;
   }
 
-  const { result, personName, viewerName, connectionLabel } = report;
+  const { result, personName, viewerName, connectionLabel, shareId, isGuest } = report;
+
+  function shareReport() {
+    if (!shareId || isGuest) {
+      setIsAuthOpen(true);
+      return;
+    }
+    const link = `${window.location.origin}/wrap/${shareId}`;
+    navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  }
+
+  async function handleClaimSuccess() {
+    if (!shareId) return;
+    setClaiming(true);
+    try {
+      const res = await fetch(`/api/wraps/${shareId}`, { method: "POST" });
+      if (res.ok) {
+        const link = `${window.location.origin}/wrap/${shareId}`;
+        await navigator.clipboard.writeText(link);
+        alert("✓ Wrapped saved to your account! 14-day share link copied to clipboard.");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setClaiming(false);
+    }
+  }
+
   const winner = (value: "You" | "Them" | "Both" | "Not enough data") => value === "You" ? viewerName || "You" : value === "Them" ? personName || "Them" : value;
 
   const scores = result.dynamicScores && result.dynamicScores.length > 0
@@ -188,8 +221,15 @@ export default function InsightsResultPage() {
         </div></div>}
 
         {/* Slide 8: Finale */}
-        {slide === 8 && <div className="chapter-finale"><div className="finale-card"><span className="finale-mark">U</span><small>{connectionLabel} Wrapped · 2026</small><h2>{result.title}</h2><p>{viewerName} + {personName}</p><div><span>{result.messageCount.toLocaleString()} messages</span><span>Verdict: {adviceData.verdict}</span><span>{result.loveLanguage}</span></div></div><div className="finale-copy"><p className="wrapped-kicker">That’s your story</p><h2>Some things deserve<br /><em>to be shared.</em></h2><p>Your report stays in this browser tab. Share the summary—or keep this little universe to yourselves.</p><button className="button button-light" onClick={shareReport}>{copied ? "Shared or copied ✓" : "Share our Wrapped ↗"}</button><Link href="/insights">Analyse another chat</Link></div></div>}
+        {slide === 8 && <div className="chapter-finale"><div className="finale-card"><span className="finale-mark">U</span><small>{connectionLabel} Wrapped · 2026</small><h2>{result.title}</h2><p>{viewerName} + {personName}</p><div><span>{result.messageCount.toLocaleString()} messages</span><span>Verdict: {adviceData.verdict}</span><span>{result.loveLanguage}</span></div></div><div className="finale-copy"><p className="wrapped-kicker">That’s your story</p><h2>Some things deserve<br /><em>to be shared.</em></h2><p>14-day shareable links are stored safely for your connection.</p><button className="button button-light" onClick={shareReport}>{copied ? "✓ 14-Day Share Link Copied!" : "Share our Wrapped (14 Days) ↗"}</button><Link href="/insights">Analyse another chat</Link></div></div>}
       </section>
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onSuccess={handleClaimSuccess}
+      />
+
 
       <footer className="wrapped-controls">
         <button className="wrapped-nav-btn wrapped-nav-prev" disabled={slide === 0} onClick={() => setSlide((current) => current - 1)}>

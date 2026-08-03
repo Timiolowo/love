@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="roseGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f69bc0" />
+      <stop offset="50%" stop-color="#ee8bb3" />
+      <stop offset="100%" stop-color="#d47098" />
+    </linearGradient>
+  </defs>
+  <!-- Outer infinity heart ribbon contour -->
+  <path d="M50 82 C28 65 14 48 14 34 C14 20 25 12 37 12 C44 12 48 16 50 20 C52 16 56 12 63 12 C75 12 86 20 86 34 C86 48 72 65 50 82 Z" stroke="url(#roseGold)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Inner interwoven ribbon twist -->
+  <path d="M30 38 C38 48 62 48 70 38" stroke="url(#roseGold)" stroke-width="4" stroke-linecap="round" opacity="0.95"/>
+  <!-- Double quote mark accent points -->
+  <circle cx="27" cy="22" r="2.5" fill="url(#roseGold)"/>
+  <circle cx="73" cy="22" r="2.5" fill="url(#roseGold)"/>
+</svg>

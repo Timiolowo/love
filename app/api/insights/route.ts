@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import JSZip, { type JSZipObject } from "jszip";
 import { generateGeminiJson, GeminiConfigurationError, GeminiResponseError } from "@/lib/gemini";
 import { isSameOrigin, takeRateLimit } from "@/lib/request-security";
+import { getCurrentUser } from "@/lib/auth";
+import { getDb } from "@/db";
+import { wraps, users } from "@/db/schema";
+import { eq, sql } from "drizzle-orm";
+import { generateShareId } from "@/lib/share";
 
 const MAX_TEXT_BYTES = 4 * 1024 * 1024;
 const MAX_ZIP_BYTES = 20 * 1024 * 1024;
@@ -376,6 +381,25 @@ export async function POST(request: Request) {
     if (!viewerName || viewerName.length > 80) return NextResponse.json({ error: "Enter your name as it appears in the chat." }, { status: 400 });
     if (file.size < 100) return NextResponse.json({ error: "The selected chat export is too small." }, { status: 413 });
 
+    const user = await getCurrentUser(request);
+
+    // If user is authenticated, check credits
+    if (user && user.credits > 0) {
+      try {
+        const db = getDb();
+        if (db) {
+          await db.update(users)
+            .set({
+              credits: sql`MAX(0, ${users.credits} - 1)`,
+              updatedAt: Date.now(),
+            })
+            .where(eq(users.id, user.id));
+        }
+      } catch (creditErr) {
+        console.warn("Could not deduct user credit in D1:", creditErr);
+      }
+    }
+
     const chatText = await extractChatText(file);
     if (chatText.includes("\0")) return NextResponse.json({ error: "The selected file is not a valid text export." }, { status: 415 });
 
@@ -409,7 +433,33 @@ export async function POST(request: Request) {
     result.estimatedLaughs = stats.estimatedLaughs;
     result.financialRequester = stats.financialRequester as "You" | "Them" | "Both" | "Not enough data";
     if (!validResult(result)) throw new Error("Invalid structured result.");
-    return NextResponse.json({ result }, { headers: { "Cache-Control": "no-store" } });
+
+    // Save wrap to D1
+    const shareId = generateShareId(10);
+    const now = Date.now();
+    const expiresAt = now + 14 * 24 * 60 * 60 * 1000; // 14 days
+
+    try {
+      const db = getDb();
+      if (db) {
+        await db.insert(wraps).values({
+          id: `wrp_${generateShareId(12)}`,
+          shareId,
+          userId: user?.id || null,
+          personName,
+          viewerName,
+          connection: connectionType,
+          result: JSON.stringify(result),
+          isDisabled: 0,
+          expiresAt,
+          createdAt: now,
+        });
+      }
+    } catch (dbSaveError) {
+      console.warn("Could not persist wrap to D1:", dbSaveError);
+    }
+
+    return NextResponse.json({ result, shareId, isGuest: !user }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof UploadValidationError) return NextResponse.json({ error: error.message }, { status: error.status });
     if (error instanceof GeminiConfigurationError) return NextResponse.json({ error: "Gemini is not configured yet." }, { status: 503 });
@@ -417,3 +467,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "We could not analyse this chat safely. Please try again." }, { status: 502 });
   }
 }
+

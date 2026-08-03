@@ -36,6 +36,37 @@ function resolveGeminiEndpoint(model: string) {
   return `${base}${url.pathname.endsWith("/models") ? "" : "/models"}/${encodeURIComponent(model)}:generateContent`;
 }
 
+import { env } from "cloudflare:workers";
+
+function getApiKey(): string | undefined {
+  let workerEnv: Record<string, string | undefined> = {};
+  try {
+    workerEnv = (env as unknown as Record<string, string | undefined>) || {};
+  } catch {
+    /* fallback when not in workers context */
+  }
+  return (
+    workerEnv.GEMINI_API_KEY?.trim() ||
+    workerEnv.GOOGLE_API_KEY?.trim() ||
+    process.env.GEMINI_API_KEY?.trim() ||
+    process.env.GOOGLE_API_KEY?.trim()
+  );
+}
+
+function getModel(): string {
+  let workerEnv: Record<string, string | undefined> = {};
+  try {
+    workerEnv = (env as unknown as Record<string, string | undefined>) || {};
+  } catch {
+    /* fallback when not in workers context */
+  }
+  return (
+    workerEnv.GEMINI_MODEL?.trim() ||
+    process.env.GEMINI_MODEL?.trim() ||
+    "gemini-2.5-flash"
+  );
+}
+
 export async function generateGeminiJson<T>({
   prompt,
   systemInstruction,
@@ -47,8 +78,8 @@ export async function generateGeminiJson<T>({
   schema: JsonSchema;
   maxOutputTokens?: number;
 }): Promise<T> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim();
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  const apiKey = getApiKey();
+  const model = getModel();
 
   if (!apiKey) throw new GeminiConfigurationError("A Gemini API key is not configured.");
   if (!/^[a-zA-Z0-9._-]+$/.test(model)) throw new GeminiConfigurationError("GEMINI_MODEL is invalid.");

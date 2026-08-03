@@ -7,6 +7,10 @@
   ],
   "main": "./worker/index.ts",
   "workers_dev": true,
+  "routes": [
+    { "pattern": "unfilteredwrap.com", "custom_domain": true },
+    { "pattern": "www.unfilteredwrap.com", "custom_domain": true }
+  ],
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
@@ -14,5 +18,18 @@
   },
   "images": {
     "binding": "IMAGES"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "unsaid-db",
+      "database_id": "8518e5de-5d86-47b4-aa9a-ed70c941ec37"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSIONS",
+      "id": "06ce8c2f5bc549f3bd2f71d089f830ae"
+    }
+  ]
 }
