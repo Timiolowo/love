@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   }
 
   const origin = new URL(request.url).origin;
-  const redirectUri = `${origin}/api/auth/google/callback`;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${origin}/api/auth/google/callback`;
 
   const params = new URLSearchParams({
     client_id: clientId,

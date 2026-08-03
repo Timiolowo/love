@@ -5,14 +5,11 @@ import { useState, useEffect } from "react";
 export function AuthModal({
   isOpen,
   onClose,
-  onSuccess,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (user: { id: string; email: string; name?: string | null; credits: number }) => void;
 }) {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -20,52 +17,12 @@ export function AuthModal({
       const params = new URLSearchParams(window.location.search);
       const errParam = params.get("error");
       if (errParam) {
-        if (errParam.includes("google")) {
-          setError("Google sign-in could not be completed. Please try signing in with your email address below.");
-        } else {
-          setError(decodeURIComponent(errParam));
-        }
+        setError(errParam.includes("google") ? "Google sign-in could not be completed. Please try again." : decodeURIComponent(errParam));
       }
     }
   }, []);
 
   if (!isOpen) return null;
-
-  async function handleEmailSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed || !trimmed.includes("@")) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed }),
-      });
-
-      const data = (await res.json()) as { success?: boolean; user?: { id: string; email: string; name?: string | null; credits: number }; error?: string };
-
-      if (data.user) {
-        if (typeof window !== "undefined") {
-          localStorage.setItem("unsaid_user", JSON.stringify(data.user));
-        }
-        if (onSuccess) onSuccess(data.user);
-        onClose();
-      } else {
-        setError(data.error || "Sign in failed. Please try again.");
-      }
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -73,7 +30,7 @@ export function AuthModal({
         <button className="modal-close" onClick={onClose}>×</button>
         <span className="wordmark-seal">U</span>
         <h2>Sign In to Unfiltered</h2>
-        <p>Access your dashboard, claim <strong>1 Free Credit</strong>, and manage sealed private rooms.</p>
+        <p>Sign in with your Google account to access your dashboard, claim <strong>1 Free Credit</strong>, and manage sealed private rooms.</p>
 
         {error && (
           <div
@@ -92,7 +49,7 @@ export function AuthModal({
           </div>
         )}
 
-        <div className="google-auth-section" style={{ marginTop: "20px" }}>
+        <div className="google-auth-section" style={{ marginTop: "24px" }}>
           <a href="/api/auth/google" className="button button-primary button-full google-signin-btn">
             <svg width="18" height="18" viewBox="0 0 24 24">
               <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
@@ -103,45 +60,6 @@ export function AuthModal({
             Continue with Google →
           </a>
         </div>
-
-        <div
-          className="auth-divider"
-          style={{
-            margin: "20px 0 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            opacity: 0.5,
-            fontSize: "12px",
-          }}
-        >
-          <span style={{ flex: 1, height: "1px", background: "currentColor" }} />
-          <span>OR SIGN IN WITH EMAIL</span>
-          <span style={{ flex: 1, height: "1px", background: "currentColor" }} />
-        </div>
-
-        <form onSubmit={handleEmailSubmit} className="email-auth-form">
-          <label style={{ display: "block", marginBottom: "12px", textAlign: "left", fontSize: "13px" }}>
-            <span style={{ color: "var(--muted, #bbb)", marginBottom: "4px", display: "block" }}>Email Address</span>
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="text-field"
-              style={{ width: "100%", height: "44px", padding: "0 14px", borderRadius: "8px" }}
-            />
-          </label>
-          <button
-            type="submit"
-            className="button button-secondary button-full"
-            disabled={loading}
-            style={{ width: "100%", height: "44px" }}
-          >
-            {loading ? "Signing in..." : "Continue with Email →"}
-          </button>
-        </form>
       </div>
     </div>
   );
